@@ -2,9 +2,9 @@
 
 namespace HassanDomeDenea\HddLaravelHelpers;
 
+use HassanDomeDenea\HddLaravelHelpers\Commands\HddLaravelHelpersCommand;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use HassanDomeDenea\HddLaravelHelpers\Commands\HddLaravelHelpersCommand;
 
 class HddLaravelHelpersServiceProvider extends PackageServiceProvider
 {

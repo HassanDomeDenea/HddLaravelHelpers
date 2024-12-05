@@ -4,24 +4,26 @@ namespace HassanDomeDenea\HddLaravelHelpers;
 
 use HassanDomeDenea\HddLaravelHelpers\Requests\StoreManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Requests\UpdateManyRequest;
+use HassanDomeDenea\HddLaravelHelpers\Rules\EnsureEveryIdExistsRule;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Validation\Validator;
 use OwenIt\Auditing\Contracts\Auditable;
 use Throwable;
 
 class BaseModel extends Model implements Auditable
 {
-    use HasUlids;
     use \OwenIt\Auditing\Auditable;
     use SoftDeletes;
 
@@ -66,7 +68,7 @@ class BaseModel extends Model implements Auditable
                         ) {
                             if (
                                 ($errorMsg = $model->canBeDeleted()) === true
-                                && (! $validator || ($errorMsg = $validator($model)) === true)
+                                && (!$validator || ($errorMsg = $validator($model)) === true)
                             ) {
                                 $model->delete();
                             } else {
@@ -90,7 +92,7 @@ class BaseModel extends Model implements Auditable
                 if (is_array($request)) {
                     $dataList = $request;
                 } else {
-                    if (! $request) {
+                    if (!$request) {
                         $request = request();
                     }
                     $dataList = $request->data;
@@ -133,15 +135,16 @@ class BaseModel extends Model implements Auditable
                 if (is_array($request)) {
                     $dataList = $request;
                 } else {
-                    if (! $request) {
+                    if (!$request) {
                         $request = request();
                     }
                     $dataList = $request->data;
                 }
-                $modelBindingName = Str::snake(Str::after(static::class, 'App\Models\\'));
+                $modelBindingName = Str::snake(class_basename(static::class));
+                $modelsList = static::query()->findMany(Arr::pluck($dataList, 'id'));
                 foreach ($dataList as $key => $item) {
                     $id = $item['id'] ?? $key;
-                    $model = static::findOrFail($id);
+                    $model = $modelsList->where('id', $id)->firstOrFail();
                     $itemRequest = new $formRequestClassName(request: $item);
                     $itemRequest->merge($item);
                     $itemRequest->{$modelBindingName} = $model;
@@ -166,7 +169,7 @@ class BaseModel extends Model implements Auditable
                 throw ValidationException::withMessages([
                     'data' => [
                         __('Error Occurred'),
-                        $e->getMessage(),
+                        $e->getMessage() ?: class_basename($e),
                     ],
                 ]);
             } else {
@@ -190,5 +193,9 @@ class BaseModel extends Model implements Auditable
     {
         return Rule::exists(static::getTableName(), $columnName)
             ->whereNull('deleted_at');
+    }
+    public static function existsMultiRule(string $columnName = 'id'): EnsureEveryIdExistsRule
+    {
+        return new EnsureEveryIdExistsRule(static::class,$columnName);
     }
 }

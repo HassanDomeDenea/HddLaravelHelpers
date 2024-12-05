@@ -6,10 +6,8 @@ use HassanDomeDenea\HddLaravelHelpers\Requests\StoreManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Requests\UpdateManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Rules\EnsureEveryIdExistsRule;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -68,7 +66,7 @@ class BaseModel extends Model implements Auditable
                         ) {
                             if (
                                 ($errorMsg = $model->canBeDeleted()) === true
-                                && (!$validator || ($errorMsg = $validator($model)) === true)
+                                && (! $validator || ($errorMsg = $validator($model)) === true)
                             ) {
                                 $model->delete();
                             } else {
@@ -92,7 +90,7 @@ class BaseModel extends Model implements Auditable
                 if (is_array($request)) {
                     $dataList = $request;
                 } else {
-                    if (!$request) {
+                    if (! $request) {
                         $request = request();
                     }
                     $dataList = $request->data;
@@ -135,7 +133,7 @@ class BaseModel extends Model implements Auditable
                 if (is_array($request)) {
                     $dataList = $request;
                 } else {
-                    if (!$request) {
+                    if (! $request) {
                         $request = request();
                     }
                     $dataList = $request->data;
@@ -194,8 +192,9 @@ class BaseModel extends Model implements Auditable
         return Rule::exists(static::getTableName(), $columnName)
             ->whereNull('deleted_at');
     }
+
     public static function existsMultiRule(string $columnName = 'id'): EnsureEveryIdExistsRule
     {
-        return new EnsureEveryIdExistsRule(static::class,$columnName);
+        return new EnsureEveryIdExistsRule(static::class, $columnName);
     }
 }

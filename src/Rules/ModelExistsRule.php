@@ -9,23 +9,23 @@ use Illuminate\Database\Eloquent\Builder;
 
 class ModelExistsRule implements ValidationRule
 {
-
     public Builder $query;
 
     /**
-     * @param callable(Builder):void $callable
+     * @param  callable(Builder):void  $callable
      * @return $this
      */
     public function modifyQuery(callable $callable)
     {
         $callable($this->query);
+
         return $this;
     }
 
     /**
-     * @param class-string<BaseModel> $modelClass
+     * @param  class-string<BaseModel>  $modelClass
      */
-    public function __construct(private string $modelClass, private     string $column = 'id')
+    public function __construct(private string $modelClass, private string $column = 'id')
     {
         $this->query = $this->modelClass::query();
     }

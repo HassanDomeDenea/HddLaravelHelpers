@@ -67,7 +67,7 @@ class BaseModel extends Model implements Auditable
                         ) {
                             if (
                                 ($errorMsg = $model->canBeDeleted()) === true
-                                && (!$validator || ($errorMsg = $validator($model)) === true)
+                                && (! $validator || ($errorMsg = $validator($model)) === true)
                             ) {
                                 $model->delete();
                             } else {
@@ -91,7 +91,7 @@ class BaseModel extends Model implements Auditable
                 if (is_array($request)) {
                     $dataList = $request;
                 } else {
-                    if (!$request) {
+                    if (! $request) {
                         $request = request();
                     }
                     $dataList = $request->data;
@@ -134,7 +134,7 @@ class BaseModel extends Model implements Auditable
                 if (is_array($request)) {
                     $dataList = $request;
                 } else {
-                    if (!$request) {
+                    if (! $request) {
                         $request = request();
                     }
                     $dataList = $request->data;
@@ -199,9 +199,8 @@ class BaseModel extends Model implements Auditable
         return new ModelExistsRule(static::class, $columnName);
     }
 
-
     public static function existsMultiRule(string $columnName = 'id'): EnsureEveryIdExistsRule
     {
-        return new EnsureEveryIdExistsRule(static::class,$columnName);
+        return new EnsureEveryIdExistsRule(static::class, $columnName);
     }
 }

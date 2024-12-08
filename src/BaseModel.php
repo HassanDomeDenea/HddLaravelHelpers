@@ -5,6 +5,7 @@ namespace HassanDomeDenea\HddLaravelHelpers;
 use HassanDomeDenea\HddLaravelHelpers\Requests\StoreManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Requests\UpdateManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Rules\EnsureEveryIdExistsRule;
+use HassanDomeDenea\HddLaravelHelpers\Rules\ModelExistsRule;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
@@ -194,6 +195,12 @@ class BaseModel extends Model implements Auditable
         return Rule::exists(static::getTableName(), $columnName)
             ->whereNull('deleted_at');
     }
+
+    public static function modelExistsRule(string $columnName = 'id'): ModelExistsRule
+    {
+        return new ModelExistsRule(static::class, $columnName);
+    }
+
     public static function existsMultiRule(string $columnName = 'id'): EnsureEveryIdExistsRule
     {
         return new EnsureEveryIdExistsRule(static::class,$columnName);

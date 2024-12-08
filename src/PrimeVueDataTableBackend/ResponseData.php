@@ -8,7 +8,7 @@ use Spatie\LaravelData\Data;
 class ResponseData extends Data
 {
     public function __construct(
-        public Collection $data,
+        public Collection|\Illuminate\Support\Collection $data,
         public int $current_page,
         public int $from,
         public int $to,

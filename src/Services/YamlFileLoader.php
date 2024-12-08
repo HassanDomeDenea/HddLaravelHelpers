@@ -43,11 +43,11 @@ class YamlFileLoader extends FileLoader
      */
     protected function parseYamlOrLoadFromCache($file)
     {
-        $cashedFile = storage_path() . '/framework/cache/yaml.lang.cache.' . md5($file) . '.php';
+        $cashedFile = storage_path().'/framework/cache/yaml.lang.cache.'.md5($file).'.php';
         if (@filemtime($cashedFile) < filemtime($file)) {
             $parser = new Parser;
             $content = $parser->parse(file_get_contents($file));
-            file_put_contents($cashedFile, '<?php' . PHP_EOL . PHP_EOL . 'return ' . var_export($content, true) . ';');
+            file_put_contents($cashedFile, '<?php'.PHP_EOL.PHP_EOL.'return '.var_export($content, true).';');
 
             return $content;
         }

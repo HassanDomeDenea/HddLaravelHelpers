@@ -7,10 +7,8 @@ use HassanDomeDenea\HddLaravelHelpers\Requests\UpdateManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Rules\EnsureEveryIdExistsRule;
 use HassanDomeDenea\HddLaravelHelpers\Rules\ModelExistsRule;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -200,6 +198,7 @@ class BaseModel extends Model implements Auditable
     {
         return new ModelExistsRule(static::class, $columnName);
     }
+
 
     public static function existsMultiRule(string $columnName = 'id'): EnsureEveryIdExistsRule
     {

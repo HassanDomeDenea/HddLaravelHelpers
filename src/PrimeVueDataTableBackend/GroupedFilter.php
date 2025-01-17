@@ -11,7 +11,7 @@ class GroupedFilter
     public ?FilterMatchMode $matchMode;
 
     /**
-     * @var Collection<Filter> | null
+     * @var Collection<GroupedFilter> | null
      */
     public ?Collection $constraints = null;
 

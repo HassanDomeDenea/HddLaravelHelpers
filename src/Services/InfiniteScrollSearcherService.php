@@ -26,7 +26,11 @@ class InfiniteScrollSearcherService
 
     protected bool $_allowEmpty = true;
 
-    protected bool $_dataClass = true;
+
+    /**
+     * @var class-string<Data>|null
+     */
+    protected string|null $_dataClass = null;
 
     protected string|array $_idColumn = 'id';
 
@@ -53,10 +57,10 @@ class InfiniteScrollSearcherService
     }
 
     /**
-     * @param  class-string<Data>  $value
+     * @param  class-string<Data>|null  $value
      * @return $this
      */
-    public function setDataClass(string $value): self
+    public function setDataClass(string|null $value): self
     {
         $this->_dataClass = $value;
 

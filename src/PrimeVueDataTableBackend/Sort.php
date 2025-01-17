@@ -8,7 +8,7 @@ class Sort
 
     public function __construct(public string $field, string $order)
     {
-        $this->direction = +$order === 1 ? 'asc' : 'desc';
+        $this->direction = (int)$order === 1 ? 'asc' : 'desc';
 
     }
 }

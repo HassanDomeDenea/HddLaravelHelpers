@@ -26,6 +26,11 @@ class BaseModel extends Model implements Auditable
     use \OwenIt\Auditing\Auditable;
     use SoftDeletes;
 
+    final public function __construct(array $attributes = [])
+    {
+        parent::__construct($attributes);
+    }
+
     public static function getTableName(): string
     {
         return (new static)->getTable();

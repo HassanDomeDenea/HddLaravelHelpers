@@ -2,11 +2,10 @@
 
 namespace HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend;
 
-use Closure;
+use HassanDomeDenea\HddLaravelHelpers\BaseModel;
 use HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend\Enums\FieldType;
 use HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend\Enums\FilterMatchMode;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
@@ -16,10 +15,16 @@ use Spatie\LaravelData\Data;
 
 use function request;
 
+/**
+ * @template TModel of BaseModel
+ * */
 class PrimeVueDataTableService
 {
     private ?Payload $payload = null;
 
+    /**
+     * @var Builder<TModel>|null
+     */
     private ?Builder $query = null;
 
     protected array $joins = [];
@@ -32,14 +37,19 @@ class PrimeVueDataTableService
 
     protected ?string $mainTableName = null;
 
-    protected ?Closure $_itemsModifier = null;
+    /**
+     * @var (callable(Collection):Collection) | null
+     */
+    protected $_itemsModifier = null;
 
     /**
-     * @var Data::class | null
+     * @var class-string<Data> | null
      */
     protected mixed $_dataClass = null;
 
-    public function __construct() {}
+    public function __construct()
+    {
+    }
 
     public function setPayload($data = null): self
     {
@@ -49,8 +59,8 @@ class PrimeVueDataTableService
     }
 
     /**
-     * @param  class-string<Model>|Builder  $modelName
-     * @param  Data::class  $dataClassName
+     * @param class-string<TModel>|Builder<TModel> $modelName
+     * @param class-string<Data> $dataClassName
      * @return $this
      *
      * @noinspection PhpDocSignatureInspection
@@ -58,8 +68,10 @@ class PrimeVueDataTableService
     public function setModel(string|Builder $modelName, ?string $dataClassName = null): self
     {
         if (is_string($modelName)) {
-            /** @var Model::class $modelName */
-            $this->query = $modelName::query();
+            /** @var Builder<TModel> $query */
+            $query = $modelName::query();
+
+            $this->query = $query;
             $this->mainTableName = $modelName::getTableName();
         } else {
             /** @var Builder $modelName */
@@ -91,7 +103,7 @@ class PrimeVueDataTableService
                 $this->joins[] = $name;
             }
         } else {
-            if (! Arr::has($this->joins, $relationName)) {
+            if (!Arr::has($this->joins, $relationName)) {
                 $this->joins[] = $relationName;
             }
         }
@@ -109,7 +121,7 @@ class PrimeVueDataTableService
                 $this->relations[] = $name;
             }
         } else {
-            if (! Arr::has($this->relations, $relationName)) {
+            if (!Arr::has($this->relations, $relationName)) {
                 $this->relations[] = $relationName;
             }
         }
@@ -127,7 +139,7 @@ class PrimeVueDataTableService
                 $this->relationsCounts[] = $name;
             }
         } else {
-            if (! Arr::has($this->relationsCounts, $relationName)) {
+            if (!Arr::has($this->relationsCounts, $relationName)) {
                 $this->relationsCounts[] = $relationName;
             }
         }
@@ -135,7 +147,10 @@ class PrimeVueDataTableService
         return $this;
     }
 
-    private function processJoinsAndRelations(Builder &$query): void
+    /**
+     * @param Builder<TModel> $query
+     */
+    private function processJoinsAndRelations(Builder $query): void
     {
         foreach (array_unique($this->joins) as $join) {
             $joinName = $join;
@@ -143,17 +158,17 @@ class PrimeVueDataTableService
                 $joinNamesList = explode('.', $joinName);
                 $joinNamesAliases = [];
                 foreach ($joinNamesList as $joinNameAlias) {
-                    $joinNamesAliases[$joinNameAlias] = fn ($join2) => $join2->as($joinNameAlias);
+                    $joinNamesAliases[$joinNameAlias] = fn($join2) => $join2->as($joinNameAlias);
                 }
                 $query->leftJoinRelationship($join, $joinNamesAliases);
             } else {
                 $query->leftJoinRelationshipUsingAlias($join, $joinName);
             }
         }
-        if (! empty($this->relations)) {
+        if (!empty($this->relations)) {
             $query->with(array_unique($this->relations));
         }
-        if (! empty($this->relationsCounts)) {
+        if (!empty($this->relationsCounts)) {
 
             $query->withCount(array_unique($this->relationsCounts));
         }
@@ -168,21 +183,20 @@ class PrimeVueDataTableService
     }
 
     /**
-     * @param  Closure<Builder>  $closure
+     * @param callable(Builder<TModel>):void $callback
      * @return $this
      */
-    public function modifyQuery(Closure $closure): self
+    public function modifyQuery(callable $callback): self
     {
-        $closure($this->query);
+        $callback($this->query);
 
         return $this;
     }
 
     /**
-     * @param  Closure<Builder>  $closure
-     * @return $this
+     * @return Builder<TModel>
      */
-    public function getQuery(Closure $closure): Builder
+    public function getQuery(): Builder
     {
         return $this->query->clone();
     }
@@ -192,7 +206,7 @@ class PrimeVueDataTableService
         if (Str::contains($column, '.')) {
             $field = $this->payload->fields->where('filterField', $column)->first();
 
-            if (! in_array($field?->source->value, [FieldType::json->value, FieldType::relationMany->value])) {
+            if (!in_array($field?->source->value, [FieldType::json->value, FieldType::relationMany->value])) {
                 $this->joinRelation(Str::beforeLast($column, '.'));
             }
         }
@@ -200,26 +214,35 @@ class PrimeVueDataTableService
 
     public function modifyColumnName(&$columnName, $sortOrFilterColumnName = 'name'): string
     {
-        /** @var Field $field */
+        /** @var Field|null $field */
         $field = $this->payload->fields->where($sortOrFilterColumnName, $columnName)->first();
 
-        if (! Str::contains($columnName, '.')) {
+        if (!Str::contains($columnName, '.')) {
 
-            if (! $this->payload->fields->where('name', $columnName)->whereIn('source', [FieldType::relationCount, FieldType::jsonArray, FieldType::relationMany])->first()) {
-                $columnName = $this->mainTableName.'.'.$columnName;
+            if (!$this->payload->fields->where('name', $columnName)->whereIn('source', [FieldType::relationCount, FieldType::jsonArray, FieldType::relationMany])->first()) {
+                $columnName = $this->mainTableName . '.' . $columnName;
             }
         } elseif ($field?->source->value === FieldType::json->value) {
 
             $columnName = Str::replace('.', '->', $field->filterField);
         } elseif (substr_count($columnName, '.') > 1) {
             $relationName = Str::afterLast(Str::beforeLast($columnName, '.'), '.');
-            $columnName = $relationName.Str::after($columnName, $relationName);
+            $columnName = $relationName . Str::after($columnName, $relationName);
         }
 
         return $columnName;
     }
 
-    private function addFilterToField($columnName, $value, FilterMatchMode $matchMode = FilterMatchMode::contains, ?Builder $query = null, $method = 'where', $skipChecking = false): void
+    /**
+     * @param string $columnName
+     * @param mixed $value
+     * @param FilterMatchMode $matchMode
+     * @param Builder<TModel>|null $query
+     * @param 'where'|'whereNot' $method
+     * @param bool $skipChecking
+     * @return void
+     */
+    private function addFilterToField(string $columnName, mixed $value, FilterMatchMode $matchMode = FilterMatchMode::contains, ?Builder $query = null, string $method = 'where', bool $skipChecking = false): void
     {
         $originalColumnName = $columnName;
         $nameOfValueParameter = 'value';
@@ -227,7 +250,7 @@ class PrimeVueDataTableService
         $isRelationManyField = false;
         $originalMethod = $method;
 
-        if (! $skipChecking) {
+        if (!$skipChecking) {
             $this->checkNestedColumnName($columnName);
             $this->modifyColumnName($columnName, 'filterField');
             if ($this->payload->fields->where('name', $columnName)->where('source', FieldType::relationCount)->first()) {
@@ -251,7 +274,7 @@ class PrimeVueDataTableService
                 $matchMode, $value, $columnName
             ) {
                 //                $q->where($columnName,$value);
-                $this->addFilterToField($isRelationManyField.'.'.$columnName, $value, $matchMode, $q, 'where', true);
+                $this->addFilterToField($isRelationManyField . '.' . $columnName, $value, $matchMode, $q, 'where', true);
             });
 
             return;
@@ -260,7 +283,7 @@ class PrimeVueDataTableService
         switch ($matchMode) {
             case FilterMatchMode::contains:
                 $operator = 'LIKE';
-                $value = '%'.$value.'%';
+                $value = '%' . $value . '%';
                 break;
             case FilterMatchMode::containsAll:
                 $operator = 'closure';
@@ -278,15 +301,15 @@ class PrimeVueDataTableService
                 break;
             case FilterMatchMode::notContains:
                 $operator = 'NOT LIKE';
-                $value = '%'.$value.'%';
+                $value = '%' . $value . '%';
                 break;
             case FilterMatchMode::startsWith:
                 $operator = 'LIKE';
-                $value = $value.'%';
+                $value = $value . '%';
                 break;
             case FilterMatchMode::endsWith:
                 $operator = 'LIKE';
-                $value = '%'.$value;
+                $value = '%' . $value;
                 break;
             case FilterMatchMode::equals:
                 $operator = '=';
@@ -338,6 +361,10 @@ class PrimeVueDataTableService
             case FilterMatchMode::greaterThanOrEquals:
                 $operator = '>=';
                 break;
+            case FilterMatchMode::containsAny:
+                //TODO: Implement
+                break;
+                //throw new \Exception('To be implemented');
         }
 
         if ($onlyColumnName || ($value !== null)) {
@@ -355,7 +382,7 @@ class PrimeVueDataTableService
                     $nameOfValueParameter, $method, $value, $columnName
                 ) {
                     foreach ($value as $v) {
-                        if (! $isRelationCountField) {
+                        if (!$isRelationCountField) {
                             $params['operator'] = 'LIKE';
                             $params[$nameOfValueParameter] = "%$v%";
                         } else {
@@ -367,7 +394,7 @@ class PrimeVueDataTableService
                 });
             } else {
                 $params = [];
-                if (! $onlyColumnName) {
+                if (!$onlyColumnName) {
                     if ($operator) {
                         $params['operator'] = $operator;
                     }
@@ -430,17 +457,16 @@ class PrimeVueDataTableService
         }
     }
 
-    private function processEachGroupedFilter($filter) {}
-
     private function processSorts(): void
     {
         $this->payload->sorts->each(function (Sort $sort) {
             $this->checkNestedColumnName($sort->field);
             $columnName = $sort->field;
-            /** @var Field $field */
+            /** @var Field|null $field */
             $field = $this->payload->fields->where('name', $columnName)->first();
             if ($field?->source === FieldType::custom) {
                 //ray(true);
+                //TODO: Adding Custom Handling
             } else {
                 $this->modifyColumnName($columnName, 'sortField');
             }
@@ -449,7 +475,7 @@ class PrimeVueDataTableService
     }
 
     /**
-     * @param  Collection<Field>  $fields
+     * @param Collection<Field> $fields
      */
     private function checkColumnsForRelations(Collection $fields): void
     {
@@ -462,19 +488,18 @@ class PrimeVueDataTableService
                     $this->loadRelation(Str::beforeLast($field->name, '.'));
                     break;
                 case FieldType::main:
-                    //throw new Exception('To be implemented');
                 case FieldType::json:
-                case FieldType::mainCount:
-                    break;
-                    //throw new Exception('To be implemented');
                 case FieldType::custom:
-                    //throw new \Exception('To be implemented');
+                case FieldType::mainCount:
+                case FieldType::jsonArray:
+                case FieldType::relationMany:
+                    break;
             }
         }
     }
 
     /**
-     * @param  Data::class  $dataClassName
+     * @param class-string<Data> $dataClassName
      * @return $this
      *
      * @noinspection PhpDocSignatureInspection
@@ -487,10 +512,10 @@ class PrimeVueDataTableService
     }
 
     /**
-     * @param  Closure<Collection>  $callback
+     * @param callable(Collection):Collection $callback
      * @return $this
      */
-    public function modifyItemsCollection(Closure $callback): self
+    public function modifyItemsCollection(callable $callback): self
     {
         $this->_itemsModifier = $callback;
 
@@ -505,7 +530,7 @@ class PrimeVueDataTableService
         //        ray()->clearScreen();
         //        ray()->showQueries();
 
-        if (! $this->payload) {
+        if (!$this->payload) {
             $this->setPayload();
         }
         $payload = $this->payload;
@@ -534,7 +559,7 @@ class PrimeVueDataTableService
                 ->limit($payload->perPage);
         }
 
-        if (! empty($this->payload->includes)) {
+        if (!empty($this->payload->includes)) {
             $this->query->with($this->payload->includes);
         }
 

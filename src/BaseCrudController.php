@@ -38,8 +38,9 @@ class BaseCrudController
         return ApiResponse::success($dtService->proceed());
     }
 
-    public function show(BaseModel $modelInstance): JsonResponse
+    public function show( $modelId): JsonResponse
     {
+        $modelInstance = $this->modelClass::findOrFail($modelId);
         return ApiResponse::success($modelInstance);
     }
 
@@ -117,6 +118,6 @@ class BaseCrudController
     {
         $query = $this->modelClass::query()->orderBy('name');
 
-        return new InfiniteScrollSearcherService($request, $query, ['name' => 'regexp'])->proceed();
+        return (new InfiniteScrollSearcherService($request, $query, ['name' => 'regexp']))->proceed();
     }
 }

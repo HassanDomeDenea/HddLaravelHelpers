@@ -65,7 +65,7 @@ class Payload
         if ($this->perPage === -1) {
             $this->page = 1;
         } else {
-            $this->page = round($this->first / $this->perPage) + 1;
+            $this->page = (int)round($this->first / $this->perPage,) + 1;
         }
     }
 

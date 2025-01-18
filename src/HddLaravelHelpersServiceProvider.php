@@ -56,7 +56,7 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
          * More info: https://github.com/spatie/laravel-package-tools
          */
         $package
-            ->name('hddLaravelHelpers')
+            ->name('HddLaravelHelpers')
             ->hasConfigFile('hdd-laravel-helpers')
 //            ->hasViews()
 //            ->hasMigration('create_hddlaravelhelpers_table')

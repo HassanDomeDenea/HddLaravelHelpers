@@ -5,8 +5,8 @@ namespace HassanDomeDenea\HddLaravelHelpers\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
 use Illuminate\Support\Str;
-
 use Touhidurabir\StubGenerator\StubGenerator;
+
 use function Laravel\Prompts\search;
 
 class CreateStandardModelCommand extends Command implements PromptsForMissingInput
@@ -29,16 +29,16 @@ class CreateStandardModelCommand extends Command implements PromptsForMissingInp
         ];
     }
 
-    public function getModels(string|null$filename=null): array
+    public function getModels(?string $filename = null): array
     {
-        $path = $filename ?: app_path() . '/Models';
+        $path = $filename ?: app_path().'/Models';
         $out = [];
         $results = scandir($path);
         foreach ($results as $result) {
             if ($result === '.' or $result === '..') {
                 continue;
             }
-            $filename = $path . '/' . $result;
+            $filename = $path.'/'.$result;
             if (is_dir($filename)) {
                 $out = array_merge($out, $this->getModels($filename));
             } else {
@@ -78,18 +78,18 @@ class CreateStandardModelCommand extends Command implements PromptsForMissingInp
         $modelName = $name;
         $snakeModel = Str::snake($modelName);
         $modelTable = Str::plural($snakeModel);
-        $controllerName = $modelName . 'Controller';
-        $factoryName = $modelName . 'Factory';
-        $seederName = $modelName . 'Seeder';
-        $storeRequestName = 'Store' . $modelName . 'Request';
-        $updateRequestName = 'Update' . $modelName . 'Request';
+        $controllerName = $modelName.'Controller';
+        $factoryName = $modelName.'Factory';
+        $seederName = $modelName.'Seeder';
+        $storeRequestName = 'Store'.$modelName.'Request';
+        $updateRequestName = 'Update'.$modelName.'Request';
 
         $migrations = collect(scandir(database_path('migrations')));
         $migrationName = Str::remove('.php', $migrations->where(fn ($name) => Str::endsWith($name, "create_{$modelTable}_table.php"))->first()
-          ?: date('Y_m_d_Hms_') . "create_{$modelTable}_table.php");
+          ?: date('Y_m_d_Hms_')."create_{$modelTable}_table.php");
 
         if (in_array('controller', $only)) {
-            $stab = new StubGenerator();
+            $stab = new StubGenerator;
             $stab->from(base_path('stubs/custom/controller.stub'), true)
                 ->to(app_path('Http/Controllers'), true)
                 ->as($controllerName)
@@ -104,7 +104,7 @@ class CreateStandardModelCommand extends Command implements PromptsForMissingInp
         }
 
         if (in_array('factory', $only)) {
-            $stab = new StubGenerator();
+            $stab = new StubGenerator;
 
             $stab->from(base_path('stubs/custom/factory.stub'), true)
                 ->to(database_path('factories'), true)
@@ -120,7 +120,7 @@ class CreateStandardModelCommand extends Command implements PromptsForMissingInp
         }
 
         if (in_array('migration', $only)) {
-            $stab = new StubGenerator();
+            $stab = new StubGenerator;
 
             $stab->from(base_path('stubs/custom/migration.stub'), true)
                 ->to(database_path('migrations'), true)
@@ -136,7 +136,7 @@ class CreateStandardModelCommand extends Command implements PromptsForMissingInp
 
         }
         if (in_array('seeder', $only)) {
-            $stab = new StubGenerator();
+            $stab = new StubGenerator;
 
             $stab->from(base_path('stubs/custom/seeder.stub'), true)
                 ->to(database_path('seeders'), true)
@@ -152,7 +152,7 @@ class CreateStandardModelCommand extends Command implements PromptsForMissingInp
 
         }
         if (in_array('model', $only)) {
-            $stab = new StubGenerator();
+            $stab = new StubGenerator;
 
             $stab->from(base_path('stubs/custom/model.stub'), true)
                 ->to(app_path('Models'), true)
@@ -169,7 +169,7 @@ class CreateStandardModelCommand extends Command implements PromptsForMissingInp
         }
         if (in_array('requests', $only)) {
 
-            $stab = new StubGenerator();
+            $stab = new StubGenerator;
 
             $stab->from(base_path('stubs/custom/storeRequest.stub'), true)
                 ->to(app_path('Http/Requests'), true)
@@ -183,7 +183,7 @@ class CreateStandardModelCommand extends Command implements PromptsForMissingInp
                 ->save();
             $this->output->info('Store Request Modified!');
 
-            $stab = new StubGenerator();
+            $stab = new StubGenerator;
 
             $stab->from(base_path('stubs/custom/updateRequest.stub'), true)
                 ->to(app_path('Http/Requests'), true)

@@ -4,36 +4,71 @@ namespace HassanDomeDenea\HddLaravelHelpers\Commands;
 
 use HassanDomeDenea\HddLaravelHelpers\Attributes\RequestBodyAttribute;
 use HassanDomeDenea\HddLaravelHelpers\Attributes\ResponseAttribute;
+use HassanDomeDenea\HddLaravelHelpers\Helpers\AppendableString;
+use HassanDomeDenea\HddLaravelHelpers\Helpers\MutableStringable;
+use HassanDomeDenea\HddLaravelHelpers\Helpers\PathHelpers;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Routing\UrlRoutable;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Foundation\Auth\User;
+use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Number;
 use Illuminate\Support\Reflector;
 use Illuminate\Support\Str;
+use Illuminate\Support\Stringable;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\RequiredIf;
+use phpDocumentor\Reflection\DocBlockFactory;
+use phpDocumentor\Reflection\DocBlockFactoryInterface;
 use ReflectionClass;
 use ReflectionException;
 use ReflectionMethod;
+use stdClass;
+use Symfony\Component\Filesystem\Path;
+use function Orchestra\Testbench\transform_relative_path;
 
 class GenerateRoutesTypesCommand extends Command
 {
-    protected $signature = 'generate-routes-types {--url=}';
+    protected $signature = 'hdd:routes-ts {--url=}';
 
     protected $description = 'Convert Routes To Typescript file';
 
-    protected Filesystem $files;
+    private string|null $typescriptTransformRelativePath = null;
 
-    private bool $useEslint = true;
+    private array $typescriptTypesToImport = [];
+    private array $typescriptTypesToImportIgnoreList = [];
 
-    public function __construct(Filesystem $files)
+    private string $routesDefinitionConstName = "laravelRoutes";
+    private string $routesDefinitionByUrlConstName = "laravelRoutesByUrl";
+
+    private string $apiAxiosInstanceName;
+
+    private string $apiAxiosInstanceImportPath;
+
+    private DocBlockFactoryInterface $docBlockFactory;
+    private array $phpToTsTypeMap = [
+        'int' => 'number',
+        'float' => 'number',
+        'string' => 'string',
+        'bool' => 'boolean',
+        'array' => 'any[]',
+        'object' => 'object',
+        'mixed' => 'any',
+        'null' => 'null',
+        'void' => 'void'
+    ];
+
+    public function __construct(private readonly Filesystem $files)
     {
+        $this->docBlockFactory = DocBlockFactory::createInstance();
         parent::__construct();
-
-        $this->files = $files;
     }
 
-    public function tabSpace(int $number, int $spaces = 2): string
+    private function tabSpace(int $number, int $spaces = 2): string
     {
         $spacesPerTab = str_repeat(' ', $spaces);
 
@@ -45,15 +80,26 @@ class GenerateRoutesTypesCommand extends Command
      */
     public function handle(): void
     {
-        $path = base_path($this->option('url') ?: 'src/types/laravelRoutes.ts');
+        $path = base_path($this->option('url') ?: config()->string('hdd-laravel-helpers.routes_types_ts_file_path'));
 
-        if (! $this->files->isDirectory(dirname($path))) {
+        $typescriptTransformFile = config('typescript-transformer.output_file');
+        $typescriptTransformIsModular = str(config('typescript-transformer.writer'))->endsWith('ModuleWriter');
+
+        if (!empty($typescriptTransformFile) && $typescriptTransformIsModular) {
+            $this->typescriptTransformRelativePath = './' . Path::makeRelative($typescriptTransformFile, dirname($path));
+
+        }
+        $this->apiAxiosInstanceImportPath = config()->string('hdd-laravel-helpers.axios-instance-import-path', "./axios");
+        $this->apiAxiosInstanceName = config()->string('hdd-laravel-helpers.axios-instance-import-name', "apiAxiosInstance");
+        $this->typescriptTypesToImportIgnoreList = config()->array('hdd-laravel-helpers.routes-ts-ignore-responses-types', ['Response', 'JsonResponse']);
+
+        if (!$this->files->isDirectory(dirname($path))) {
             $this->files->makeDirectory(dirname($path), 0755, true, true);
         }
+        $output = $this->getRoutesTypesOutput();
+        $this->files->put($path, $output);
 
-        $this->files->put($path, $this->getRoutesTypesOutput());
-
-        if ($this->useEslint && strlen(shell_exec('bun -v')) < 20) {
+        if (config()->boolean('hdd-laravel-helpers.rotes_types_ts_eslint', false) && strlen(shell_exec('bun -v')) < 20) {
             $this->info('Fixing');
             $this->info(shell_exec("bun eslint \"$path\" --fix"));
         }
@@ -65,308 +111,291 @@ class GenerateRoutesTypesCommand extends Command
     private function getRoutesTypesOutput(): string
     {
         $allowedMethods = ['GET', 'POST', 'PUT', 'DELETE'];
-        $routes = collect(Route::getRoutes())->reduce(/**
-     * @throws ReflectionException
-     */ function ($carry, \Illuminate\Routing\Route $route) use ($allowedMethods) {
-            if (! Str::startsWith($route->uri(), 'api') && ! Str::startsWith($route->uri(), 'sanctum')) {
-                return $carry;
+        $routes = Route::getRoutes()->getRoutes();
+        $result = collect();
+        foreach ($routes as $route) {
+            if (!Str::startsWith($route->uri(), 'api') && !Str::startsWith($route->uri(), 'sanctum')) {
+                continue;
             }
             $uri = $route->uri();
+            $routeRules = [];
+            $routeResponseType = null;
+
             if (Str::startsWith($uri, ['api', '/api'])) {
                 $uri = Str::after($uri, 'api/');
             } else {
                 $uri = Str::start($uri, '/');
             }
-            if (empty($uri)) {
-                return $carry;
-            }
             foreach ($route->methods() as $method) {
-                if (! in_array($method, $allowedMethods)) {
+                if (!in_array($method, $allowedMethods)) {
                     continue;
                 }
-                $allParameters = $route->signatureParameters();
 
-                $controllerClassName = $route->getControllerClass();
-                $controllerMethodName = $route->getActionMethod();
 
-                $methodReflection = null;
-                if (class_exists($controllerClassName) && method_exists($controllerClassName, $controllerMethodName)) {
-                    $methodReflection = new ReflectionMethod($controllerClassName, $controllerMethodName);
-                }
+                //Checking for Request Rules
+                $formRequests = $route->signatureParameters(['subClass' => FormRequest::class]);
 
-                $rulesList = [];
-                $rules = [];
-                if ($attributes = $methodReflection?->getAttributes(RequestBodyAttribute::class)) {
-                    foreach ($attributes as $attribute) {
-                        $rulesList[] = $attribute->newInstance()->getRules();
-                        $rules = $rules + $attribute->newInstance()->getRules();
-                    }
-                }
-                foreach ($allParameters as $parameter) {
-                    $model = Reflector::getParameterClassName($parameter) ?: $parameter->getType();
-                    if (class_exists($model)) {
-                        $reflectionClass = new ReflectionClass($model);
-                        if ($reflectionClass->hasMethod('rules')) {
-                            $rulesList[] = $reflectionClass->newInstance()->rules();
-                            $rules = $rules + $reflectionClass->newInstance()->rules();
-                        }
-                    }
-                }
-
-                $bindings = [];
-                $parameters = $route->signatureParameters(['subClass' => UrlRoutable::class]);
-                foreach ($parameters as $parameter) {
-                    $model = Reflector::getParameterClassName($parameter) ?: $parameter->getType();
-                    if (empty($model)) {
+                if (count($formRequests) > 0) {
+                    /** @var \ReflectionParameter $parameter */
+                    $parameter = $formRequests[0];
+                    $parameterType = $parameter->getType();
+                    if (!$parameterType || !method_exists($parameterType, 'getName')) {
                         continue;
                     }
-                    $reflectionClass = new ReflectionClass($model);
+                    $parameterClassName = $parameterType->getName();
 
-                    $bindings[$parameter->name] = $reflectionClass->hasMethod('getRouteKeyName') ? app($model)->getRouteKeyName() : null;
-                }
-                $response = null;
-                if ($attributes = $methodReflection?->getAttributes(ResponseAttribute::class)) {
-                    $response = $attributes[0]->newInstance()->classNameToTypeScript();
-                }
-                if ($response === 'App.PrimeVueDataTableBackend.ResponseData' && $route->getName()) {
-                    $carry['primeVueDatatableRouteNames'][] = $route->getName();
-                    $carry['primeVueDatatableDeleteRouteNames'][] = str_replace('.index', '.destroy', $route->getName());
-                    $carry['primeVueDatatableRoutePaths'][] = $uri;
+                    if (class_exists($parameterClassName)) {
+
+                        /** @var ReflectionClass<FormRequest> $reflectionClass */
+                        $reflectionClass = new ReflectionClass($parameterClassName);
+
+                        if ($reflectionClass->isInstantiable() && $reflectionClass->hasMethod('rules')) {
+                            try {
+                                $formRequestClassInstance = $reflectionClass->newInstance();
+                                if (method_exists($formRequestClassInstance, 'rules')) {
+                                    $routeRules = $formRequestClassInstance->rules();
+                                }
+                            } catch (ReflectionException) {
+
+                            }
+                        }
+                    }
                 }
 
-                $parametersTypes = [];
+                $controllerClassName = $route->getControllerClass();
+                if ($controllerClassName) {
+                    $controllerMethodName = $route->getActionMethod();
+
+                    if ($controllerMethodName) {
+
+                        if ($controllerMethodName === $controllerClassName) {
+                            $controllerMethodName = '__invoke';
+                        }
+
+                        if (class_exists($controllerClassName) && method_exists($controllerClassName, $controllerMethodName)) {
+                            $methodReflection = new ReflectionMethod($controllerClassName, $controllerMethodName);
+
+                            if ($attributes = $methodReflection->getAttributes(RequestBodyAttribute::class)) {
+                                foreach ($attributes as $attribute) {
+                                    $routeRules += $attribute->newInstance()->getRules();
+                                }
+                            }
+
+                            if ($attributes = $methodReflection->getAttributes(ResponseAttribute::class)) {
+
+                                $routeResponseType = $attributes[0]->newInstance()->classNameToTypeScript();
+                                if (!empty($routeResponseType) && !in_array($routeResponseType, $this->typescriptTypesToImport)) {
+                                    $this->typescriptTypesToImport[] = $routeResponseType;
+                                }
+                            } else {
+                                $routeResponseType = $this->parseMethodReturnTypeFromDocComment($methodReflection);
+                            }
+
+                        }
+
+                    }
+                }
+
+
+                // End Checking for Request Rules
+
+                //Getting Route Parameters
+                /** @var array<string,'required'|'optional'> $routeParameters */
+                $routeParameters = [];
                 foreach ($route->parameterNames() as $name) {
                     if (Str::contains($route->uri(), '{' . $name . '?}')) {
-                        $parametersTypes[$name . '?'] = 'string | number';
+                        $routeParameters[] = ['name' => $name, 'isRequired' => false];
                     } else {
-                        $parametersTypes[$name] = 'string | number';
+                        $routeParameters[] = ['name' => $name, 'isRequired' => true];
                     }
                 }
-                Arr::first($parametersTypes, fn ($v, $k) => Str::endsWith($k, '?'));
 
-                if ($route->getName()) {
-                    if (! empty($rules)) {
-                        if (empty($parametersTypes)) {
-                            $carry['namesWithEmptyParametersWithBody'][$method][] = $route->getName();
-                        } elseif (! Arr::first($parametersTypes, fn ($v, $k) => ! Str::endsWith($k, '?'))) {
-                            $carry['namesWithAllOptionalParametersWithBody'][$method][] = $route->getName();
-                        } else {
-                            $carry['namesWithSomeRequiredParametersWithBody'][$method][] = $route->getName();
-                        }
+                //End Route Parameters
+
+                //Start Getting Route Bindings
+
+                /** @var array<string,string|null> $routeBindableParameters */
+                $routeBindableParameters = [];
+                $parameters = $route->signatureParameters([UrlRoutable::class]);
+                foreach ($parameters as $parameter) {
+                    $parameterType = $parameter->getType();
+                    if (!$parameterType || !method_exists($parameterType, 'getName')) {
+                        continue;
                     }
-                    if (empty($rules) || ! $this->hasRequiredRule($rules)) {
-                        if (empty($parametersTypes)) {
-                            $carry['namesWithEmptyParametersEmptyBody'][$method][] = $route->getName();
-                        } elseif (! Arr::first($parametersTypes, fn ($v, $k) => ! Str::endsWith($k, '?'))) {
-                            $carry['namesWithAllOptionalParametersEmptyBody'][$method][] = $route->getName();
-                        } else {
-                            $carry['namesWithSomeRequiredParametersEmptyBody'][$method][] = $route->getName();
+                    $parameterClassName = $parameterType->getName();
+
+                    if (!$parameterClassName || !class_exists($parameterClassName)) {
+                        continue;
+                    }
+                    /** @var ReflectionClass<Model> $reflectionClass */
+                    $reflectionClass = new ReflectionClass($parameterClassName);
+
+                    $bindingValue = $reflectionClass->hasMethod('getRouteKeyName') ? app($parameterClassName)->getRouteKeyName() : null;
+                    if ($bindingValue) {
+                        $routeBindableParameters[$parameter->name] = $bindingValue;
+                        $k = array_find_key($routeParameters, fn($i) => $i['name'] === $parameter->name);
+                        if ($k > -1) {
+                            $routeParameters[$k]['binding'] = $bindingValue;
                         }
                     }
                 }
-                $carry['values'][$method][$route->getName() ?: $route->uri()] = [
-                    'url' => $uri,
+                //End Getting Route Bindings
+
+
+                $result->add([
                     'name' => $route->getName(),
-                    'parameters' => $route->parameterNames(),
-                    'required_parameters' => $requiredParameters = Arr::where($route->parameterNames(), fn ($i) => ! Str::contains($route->uri(), '{' . $i . '?}')),
-                    'bindings' => array_flip($bindings) ?: null,
-                    'required_bindings' => $bindings ? array_keys(Arr::where($bindings, fn ($v, $k) => in_array($k, $requiredParameters))) : null,
-                    'needsBody' => ! empty($rules),
-                ];
-                $carry['types'][$method][$route->getName() ?: $route->uri()] = [
-                    'url' => $uri,
-                    'name' => $route->getName(),
-                    'parameters' => $parametersTypes,
-                    'response' => $response,
-                    'body' => $rules,
-                    'rulesList' => $rulesList,
-                    'bindings' => $bindings,
-                ];
+                    'uri' => $uri,
+                    'method' => $method,
+                    'rules' => $routeRules ?: new stdClass(),
+                    'parameters' => $routeParameters,
+                    'bindings' => $routeBindableParameters ?: new stdClass(),
+                    'response' => $routeResponseType,
+                ]);
+
             }
+        }
 
-            return $carry;
-        }, [
-            'primeVueDatatableRoutePaths' => [],
-            'primeVueDatatableRouteNames' => [],
-            'primeVueDatatableDeleteRouteNames' => [],
-            'namesWithEmptyParametersEmptyBody' => ['GET' => [], 'POST' => [], 'PUT' => [], 'DELETE' => []],
-            'namesWithAllOptionalParametersEmptyBody' => ['GET' => [], 'POST' => [], 'PUT' => [], 'DELETE' => []],
-            'namesWithSomeRequiredParametersEmptyBody' => ['GET' => [], 'POST' => [], 'PUT' => [], 'DELETE' => []],
-            'namesWithEmptyParametersWithBody' => ['GET' => [], 'POST' => [], 'PUT' => [], 'DELETE' => []],
-            'namesWithAllOptionalParametersWithBody' => ['GET' => [], 'POST' => [], 'PUT' => [], 'DELETE' => []],
-            'namesWithSomeRequiredParametersWithBody' => ['GET' => [], 'POST' => [], 'PUT' => [], 'DELETE' => []],
-        ]);
+        $routesTypescriptDefinition = $this->generaRoutesTypescriptDefinition($result);
 
-        $values = json_encode($routes['values'], JSON_PRETTY_PRINT) ?: '';
+        $routesKeyedByName = $result->unique('name')->keyBy('name')->toJson(JSON_PRETTY_PRINT);
 
-        $typesStr = $this->getLaravelRoutesConst($routes);
+        $importTsDataTypes = '';
 
         $methodsDeclarations = $this->getMethodsDeclarations($allowedMethods);
+        if ($this->typescriptTransformRelativePath) {
+            $dataNames = join(", ", collect($this->typescriptTypesToImport)->unique()->filter(function ($i) {
+                return !in_array($i, $this->typescriptTypesToImportIgnoreList);
+            })->toArray());
+            $importTsDataTypes = "import type { {$dataNames} } from '{$this->typescriptTransformRelativePath}';";
+        }
 
-        $routeItemByNameResponseType = $this->getRouteItemByNameResponseType($routes);
-        $routeItemByUrlResponseType = $this->getRouteItemByUrlResponseType($routes);
-
-        $routeItemByNameBodyType = $this->getRouteItemByNameBodyType($routes);
-        $routeItemByUrlBodyType = $this->getRouteItemByUrlBodyType($routes);
-        $namesWithSomeRequiredParametersEmptyBody = $this->generateRouteNameByMethodsListFromArray($routes['namesWithSomeRequiredParametersEmptyBody']);
-        $namesWithEmptyParametersEmptyBody = $this->generateRouteNameByMethodsListFromArray($routes['namesWithEmptyParametersEmptyBody']);
-        $namesWithAllOptionalParametersEmptyBody = $this->generateRouteNameByMethodsListFromArray($routes['namesWithAllOptionalParametersEmptyBody']);
-
-        $namesWithSomeRequiredParametersWithBody = $this->generateRouteNameByMethodsListFromArray($routes['namesWithSomeRequiredParametersWithBody']);
-        $namesWithEmptyParametersWithBody = $this->generateRouteNameByMethodsListFromArray($routes['namesWithEmptyParametersWithBody']);
-        $namesWithAllOptionalParametersWithBody = $this->generateRouteNameByMethodsListFromArray($routes['namesWithAllOptionalParametersWithBody']);
-        $primeVueDatatableRouteNames = Arr::join(Arr::map($routes['primeVueDatatableRouteNames'], fn ($i) => "'" . $i . "'"), ' | ');
-        $primeVueDatatableDeleteRouteNames = Arr::join(Arr::map($routes['primeVueDatatableDeleteRouteNames'], fn ($i) => "'" . $i . "'"), ' | ');
-        $primeVueDatatableRoutePaths = Arr::join(Arr::map($routes['primeVueDatatableRoutePaths'], fn ($i) => "'" . $i . "'"), ' | ');
-
-        return <<<JAVASCRIPT
+        return <<<TS
 /* This file is auto generated */
-import type { AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios'
-import { apiAxiosInstance } from '~/composables/axios'
+import type { AxiosRequestConfig, AxiosResponse } from 'axios'
+$importTsDataTypes
+import { {$this->apiAxiosInstanceName} } from '{$this->apiAxiosInstanceImportPath}'
 
-type RouteMethodType = 'GET' | 'POST' | 'PUT' | 'DELETE'
-type RouteNameType = string | null
-type RoutePathType = string
-type RouteParameterNameType = string
-type RouteBindingsType = { [p in string]: string } | null
-type RouteItemType = {
-  name: RouteNameType
-  url: RoutePathType
-  parameters: RouteParameterNameType[]
-  required_parameters: RouteParameterNameType[]
-  bindings: RouteBindingsType
-  required_bindings: RouteParameterNameType[] | null
-  needsBody: boolean
-  method?: RouteMethodType
-}
-type RouteListByMethodType = {
-  [p in RouteMethodType]: {
-    [p2 in (RouteNameType | RoutePathType) & string]: RouteItemType
+//Helpers:
+
+function isAxiosRequestConfig(config: unknown): config is AxiosRequestConfig {
+  if (typeof config !== 'object' || config === null) {
+    return false;
   }
+  return 'params' in config || 'baseURL' in config;
 }
 
-type RouteNamesWithSomeRequiredParametersEmptyBody = $namesWithSomeRequiredParametersEmptyBody
-
-type RouteNamesWithEmptyParametersEmptyBody = $namesWithEmptyParametersEmptyBody
-
-/*
-type RouteNamesWithAllOptionalParametersEmptyBody = $namesWithAllOptionalParametersEmptyBody
-*/
-
-type RouteNamesWithSomeRequiredParametersWithBody = $namesWithSomeRequiredParametersWithBody
-
-type RouteNamesWithEmptyParametersWithBody = $namesWithEmptyParametersWithBody
-
-/*
-type RouteNamesWithAllOptionalParametersWithBody = $namesWithAllOptionalParametersWithBody
-*/
-
-export type RouteItemByNameResponseType = $routeItemByNameResponseType
-
-export type RouteItemByUrlResponseType = $routeItemByUrlResponseType
-
-export type RouteItemByNameBodyType = $routeItemByNameBodyType
-
-export type RouteItemByUrlBodyType = $routeItemByUrlBodyType
-
-export type PrimeVueDatatableRouteNames = $primeVueDatatableRouteNames
-
-export type PrimeVueDatatableDeleteRouteNames = $primeVueDatatableDeleteRouteNames
-
-export type PrimeVueDatatableRoutePaths = $primeVueDatatableRoutePaths
-
-export type LaravelRoutesTypes = $typesStr
-
-export type ApiResponse<T> = {
-  success: boolean
-  data: T
-}
-
-export type AxiosApiValidationError<T = any> = {
-  response: Omit<AxiosResponse<T>, 'data'> & {
-    data: {
-      message: string
-      errors: string[]
-    }
-  }
-} & AxiosError
-
-function isAxiosConfig(config: any): boolean {
-  return config && (config.params || config.baseURL)
-}
-
-const laravelRoutes: RouteListByMethodType = $values
-
-type SplitIntoUnion<T> = {
-  [K in keyof T]: { [P in K]: T[K] }
-}[keyof T]
-
-type ConvertBindingsToObjects<T extends { [p: string]: any }, K extends { [p: string]: any }> = keyof T extends keyof K ? SplitIntoUnion<{ [P in T[ keyof T]]: K[keyof T] }> & { [key: string]: any } : never
-
-$methodsDeclarations
-
-JAVASCRIPT . <<<'JS'
-
-function generateRouteUrl(route: RouteItemType, param: any): string {
-  let url = route.url
+function generateRouteUrl(route: RouteItemType, param?: ParameterType | ParameterType[] | { [key: string]: ParameterType }): string {
+  let url = route.uri
   if (route.parameters.length > 0 && param) {
     if (typeof param === 'object') {
       if (Array.isArray(param)) {
         for (let i = 0; i < route.parameters.length; i++) {
           if (param[i] !== undefined)
-            url = replaceParamWithValue(url, route.parameters[i], param[i])
+            url = replaceParamWithValue(url, route.parameters[i].name, param[i])
         }
       }
       else {
         for (const i in param) {
-          if (route.parameters.includes(i))
-            url = replaceParamWithValue(url, i, param[i])
-          else if (route.bindings && route.bindings[i])
-            url = replaceParamWithValue(url, route.bindings[i], param[i])
+          const routeParameter = route.parameters.find(e => e.name === i || e.binding === i)
+          if (routeParameter) {
+            url = replaceParamWithValue(url, routeParameter.name, param[i])
+          }
         }
       }
     }
     else {
-      url = replaceParamWithValue(url, route.parameters[0], param)
+      url = replaceParamWithValue(url, route.parameters[0].name, param)
     }
   }
   return url
 }
 
-function replaceParamWithValue(url: string, param: undefined | string, value: any): string {
-  url = url.replace(`{${param}}`, value)
-  url = url.replace(`{${param}?}`, value)
+function replaceParamWithValue(url: string, param: string, value: any): string {
+  url = url.replace(`{\${param}}`, value)
+  url = url.replace(`{\${param}?}`, value)
   return url
 }
 
+function processPostPutRoutesArgs(routeItem: RouteItemType, args: any[]) {
+  let config, body, routeParameters
+  if (args.length > 0) {
+        if (routeItem.parameters.length > 0) {
+            routeParameters = args[0]
+            if (Object.keys(routeItem.rules).length > 0) {
+                body = args[1]
+                config = args[2]
+            } else {
+                config = args[1]
+            }
+        } else if (Object.keys(routeItem.rules).length > 0) {
+            body = args[0]
+            config = args[1]
+        } else {
+            config = args[0]
+        }
+    }
+  return {
+    config,
+    body,
+    routeParameters,
+  }
+}
 
-export const api = {
-  get<T extends keyof RouteItemByUrlResponseType['GET'] >(url: T | string, config?: {
-    params?: RouteItemByUrlBodyType['GET'][T] | string | any
-    baseURL?: string
-  }): Promise<AxiosResponse<ApiResponse<RouteItemByUrlResponseType['GET'][T]>>> {
-    return apiAxiosInstance.get(url as string, config)
-  },
-  post<T extends keyof RouteItemByUrlResponseType['POST']>(url: T | string, data?: RouteItemByUrlBodyType['POST'][T], config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<RouteItemByUrlResponseType['POST'][T]>>> {
-    return apiAxiosInstance.post(url, data, config)
-  },
-  put<T extends keyof RouteItemByUrlResponseType['PUT']>(url: T | string, data: RouteItemByUrlBodyType['PUT'][T], config?: AxiosRequestConfig): Promise<AxiosResponse<ApiResponse<RouteItemByUrlResponseType['PUT'][T]>>> {
-    return apiAxiosInstance.put(url, data, config)
-  },
-  delete<T extends keyof RouteItemByUrlResponseType['DELETE']>(url: T | string, config?: {
-    params?: RouteItemByUrlBodyType['DELETE'][T]
-    baseURL?: string
-  }): Promise<AxiosResponse<ApiResponse<RouteItemByUrlResponseType['DELETE'][T]>>> {
-    return apiAxiosInstance.delete(url as string, config)
-  },
+function processGetDeleteRoutesArgs(routeItem: RouteItemType, args: any[]) {
+  let url
+  if (args[1] || (args[0] && !isAxiosRequestConfig(args[0])))
+    url = generateRouteUrl(routeItem, args[0])
+  else
+    url = generateRouteUrl(routeItem)
+
+  const config = args[1] || args[0]
+
+  return {
+    url,
+    config,
+  }
+}
+
+type RouteMethodType = 'GET' | 'POST' | 'PUT' | 'DELETE'
+type RouteNameType = string | null
+type RoutePathType = string
+type ParameterType = number | string
+type RouteItemType = {
+  name: RouteNameType
+  uri: RoutePathType
+  method: RouteMethodType
+  rules: Record<string, any>
+  parameters: { name: string, isRequired: boolean, binding?: string } []
+  bindings: Record<string, string>
+  response: any
+}
+
+$routesTypescriptDefinition
+
+const laravelRoutes: {[key: string]: RouteItemType} = $routesKeyedByName
+
+$methodsDeclarations
+
+export const api: {
+  getByName: typeof axiosGetByName
+  deleteByName: typeof axiosDeleteByName
+  postByName: typeof axiosPostByName
+  putByName: typeof axiosPutByName
+  get: typeof axiosGet
+  post: typeof axiosPost
+  put: typeof axiosPut
+  delete: typeof axiosDelete
+} = {
   getByName: axiosGetByName,
   deleteByName: axiosDeleteByName,
   postByName: axiosPostByName,
   putByName: axiosPutByName,
+  get: axiosGet,
+  post: axiosPost,
+  put: axiosPut,
+  delete: axiosDelete,
 }
-
-
-JS;
+TS;
 
     }
 
@@ -375,7 +404,7 @@ JS;
         $typesResponsesStr = '{' . PHP_EOL;
         foreach ($routes['types'] as $paths) {
             foreach ($paths as $pathData) {
-                if (! $pathData['name']) {
+                if (!$pathData['name']) {
                     continue;
                 }
 
@@ -414,9 +443,9 @@ JS;
                 $typesStr .= $this->tabSpace(3) . "url: '" . $pathData['url'] . "'" . PHP_EOL;
                 $typesStr .= $this->tabSpace(3) . "name: '" . $pathData['name'] . "'" . PHP_EOL;
                 $typesStr .= $this->tabSpace(3) . 'response: ' . ($pathData['response'] ?: 'null') . PHP_EOL;
-                if (! empty($pathData['parameters'])) {
+                if (!empty($pathData['parameters'])) {
 
-                    //Object Type
+                    // Object Type
                     $typesStr .= $this->tabSpace(3) . 'parameters: {' . PHP_EOL;
 
                     foreach ($pathData['parameters'] as $parameterName => $parameterType) {
@@ -424,8 +453,8 @@ JS;
                     }
                     $typesStr .= $this->tabSpace(3) . '}' . PHP_EOL;
 
-                    //Array Type
-                    $optionals = Arr::where(array_keys($pathData['parameters']), fn ($i) => Str::endsWith($i, '?'));
+                    // Array Type
+                    $optionals = Arr::where(array_keys($pathData['parameters']), fn($i) => Str::endsWith($i, '?'));
                     $typesStr .= $this->tabSpace(3) . 'parameters_array: [';
                     $typesStr .= Arr::join($pathData['parameters'], ', ');
                     foreach ($optionals as $n => $optional) {
@@ -433,7 +462,7 @@ JS;
                     }
                     $typesStr .= ']' . PHP_EOL;
 
-                    //Single Type
+                    // Single Type
                     if (count($pathData['parameters']) - count($optionals) === 1) {
                         $typesStr .= $this->tabSpace(3) . 'parameters_single: ' . $pathData['parameters'][array_key_first($pathData['parameters'])] . PHP_EOL;
                     } else {
@@ -444,7 +473,7 @@ JS;
                     $typesStr .= $this->tabSpace(3) . 'parameters_array: []' . PHP_EOL;
                     $typesStr .= $this->tabSpace(3) . 'parameters_single: never' . PHP_EOL;
                 }
-                if (! empty($pathData['bindings'])) {
+                if (!empty($pathData['bindings'])) {
 
                     $typesStr .= $this->tabSpace(3) . 'bindings: {' . PHP_EOL;
 
@@ -470,96 +499,66 @@ JS;
     {
         $methodsDeclarations = <<<'TS'
 
-function processPostPutRoutesArgs(routeObject: RouteItemType, args: any) {
-  let config, body, routeParameters
-  if (args.length > 0) {
-    if (routeObject.parameters.length) {
-      routeParameters = args[0]
-      if (routeObject.needsBody) {
-        body = args[1]
-        config = args[2]
-      }
-      else {
-        config = args[1]
-      }
-    }
-    else if (routeObject.needsBody) {
-      body = args[0]
-      config = args[1]
-    }
-    else {
-      config = args[0]
-    }
-  }
-  return {
-    config,
-    body,
-    routeParameters,
-  }
-}
 
 TS;
         foreach ($allowedMethods as $method) {
             $smallLetterMethod = strtolower($method);
-            $methodsDeclarations .=
-              <<<TYPESCRIPT
-
-type {$smallLetterMethod}EndpointPath = string
-
-export function {$smallLetterMethod}RoutePath<T extends RouteNamesWithEmptyParametersEmptyBody['$method']>(name: T): {$smallLetterMethod}EndpointPath
-export function {$smallLetterMethod}RoutePath<T extends keyof LaravelRoutesTypes['$method'], K extends LaravelRoutesTypes['$method'][T]['parameters'], B extends LaravelRoutesTypes['$method'][T]['bindings']>(name: T, param: Array<K[keyof K]>[number] | K | ConvertBindingsToObjects<B, K>): {$smallLetterMethod}EndpointPath
-
-export function {$smallLetterMethod}RoutePath<T extends keyof LaravelRoutesTypes['$method'], K extends LaravelRoutesTypes['$method'][T]['parameters'], B extends LaravelRoutesTypes['$method'][T]['bindings']>(name: T, param?:  Array<K[keyof K]>[number] | K | ConvertBindingsToObjects<B, K>): {$smallLetterMethod}EndpointPath {
-  return generateRouteUrl(laravelRoutes.{$method}[name] as RouteItemType, param)
-}
-
-TYPESCRIPT;
             if (in_array($method, ['GET', 'DELETE'])) {
                 $ucFirstMethodName = ucfirst($smallLetterMethod);
                 $methodsDeclarations .= <<<TS
 
-export function axios{$ucFirstMethodName}ByName<N extends RouteNamesWithSomeRequiredParametersEmptyBody['{$method}'], P extends LaravelRoutesTypes['{$method}'][N]['parameters'], B extends LaravelRoutesTypes['{$method}'][N]['bindings']>(
-  name: N,
-  routeParameter: LaravelRoutesTypes['{$method}'][N]['parameters_single'] | P | LaravelRoutesTypes['{$method}'][N]['parameters_array'] | ConvertBindingsToObjects<B, P>,
-  config?: {
-    baseURL?: string
-  }): Promise<AxiosResponse<ApiResponse<RouteItemByNameResponseType[N]>>>
+// No Parameters No Payload | No Parameters Optional Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['{$method}']['noParametersAndNoPayload'] | routeRequirementsByNames['{$method}']['noParametersAndOptionalPayload']>(
+  name: TName,
+  config?: routesTypesByNames['{$method}'][TName]['payloadAsAxiosConfig']): Promise<AxiosResponse<routesTypesByNames['{$method}'][TName]['response']>>
 
-export function axios{$ucFirstMethodName}ByName<N extends RouteNamesWithSomeRequiredParametersWithBody['{$method}'], P extends LaravelRoutesTypes['{$method}'][N]['parameters'], B extends LaravelRoutesTypes['{$method}'][N]['bindings']>(
-  name: N,
-  routeParameter: LaravelRoutesTypes['{$method}'][N]['parameters_single'] | P | LaravelRoutesTypes['{$method}'][N]['parameters_array'] | ConvertBindingsToObjects<B, P>,
-  config: {
-    params: RouteItemByNameBodyType[N]
-    baseURL?: string
-  }): Promise<AxiosResponse<ApiResponse<RouteItemByNameResponseType[N]>>>
+// No Parameters Required Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['{$method}']['noParametersAndRequiredPayload']>(
+  name: TName,
+  config: routesTypesByNames['{$method}'][TName]['payloadAsAxiosConfig']): Promise<AxiosResponse<routesTypesByNames['{$method}'][TName]['response']>>
 
-export function axios{$ucFirstMethodName}ByName<N extends RouteNamesWithEmptyParametersEmptyBody['{$method}']>(
-  name: N,
-  config?: {
-    baseURL?: string
-  }): Promise<AxiosResponse<ApiResponse<RouteItemByNameResponseType[N]>>>
+// Optional Parameters No Payload | Optional Parameters Optional Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['{$method}']['optionalParametersAndNoPayload'] | routeRequirementsByNames['{$method}']['optionalParametersAndOptionalPayload']>(
+  name: TName,
+  routeParameter?: routesTypesByNames['{$method}'][TName]['routeParameters'],
+  config?: routesTypesByNames['{$method}'][TName]['payloadAsAxiosConfig']): Promise<AxiosResponse<routesTypesByNames['{$method}'][TName]['response']>>
 
-export function axios{$ucFirstMethodName}ByName<N extends RouteNamesWithEmptyParametersWithBody['{$method}']>(
-  name: N,
-  config: {
-    params: RouteItemByNameBodyType[N]
-    baseURL?: string
-  }): Promise<AxiosResponse<ApiResponse<RouteItemByNameResponseType[N]>>>
+// Optional Parameters Required Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['{$method}']['optionalParametersAndRequiredPayload']>(
+  name: TName,
+  routeParameter: routesTypesByNames['{$method}'][TName]['routeParameters'] | null,
+  config: routesTypesByNames['{$method}'][TName]['payloadAsAxiosConfig']): Promise<AxiosResponse<routesTypesByNames['{$method}'][TName]['response']>>
 
-export function axios{$ucFirstMethodName}ByName<N extends RouteNamesWithEmptyParametersWithBody['{$method}'] | RouteNamesWithSomeRequiredParametersWithBody['{$method}']
-  | RouteNamesWithEmptyParametersEmptyBody['{$method}'] | RouteNamesWithSomeRequiredParametersEmptyBody['{$method}']>(
-  name: N,
+// Required Parameters No Payload | Required Parameters Optional Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['{$method}']['requiredParametersAndNoPayload'] | routeRequirementsByNames['{$method}']['requiredParametersAndOptionalPayload']>(
+  name: TName,
+  routeParameter: routesTypesByNames['{$method}'][TName]['routeParameters'],
+  config?: routesTypesByNames['{$method}'][TName]['payloadAsAxiosConfig']): Promise<AxiosResponse<routesTypesByNames['{$method}'][TName]['response']>>
+
+// Required Parameters Required Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['{$method}']['requiredParametersAndRequiredPayload']>(
+  name: TName,
+  routeParameter: routesTypesByNames['{$method}'][TName]['routeParameters'],
+  config: routesTypesByNames['{$method}'][TName]['payloadAsAxiosConfig']): Promise<AxiosResponse<routesTypesByNames['{$method}'][TName]['response']>>
+
+
+export function axios{$ucFirstMethodName}ByName<TName extends keyof routesTypesByNames['{$method}']>(
+  name: TName,
   ...args: any[]
 
-): Promise<AxiosResponse<ApiResponse<RouteItemByNameResponseType[N]>>> {
-  let url
-  if (args[1] || (args[0] && !isAxiosConfig(args[0])))
-    url = {$smallLetterMethod}RoutePath(name, args[0])
-  else
-    url = {$smallLetterMethod}RoutePath(name as RouteNamesWithEmptyParametersEmptyBody['{$method}'])
+): Promise<AxiosResponse<routesTypesByNames['{$method}'][TName]['response']>> {
+    let routeItem = {$this->routesDefinitionConstName}[name];
+    if (!routeItem) {
+        return Promise.reject(new Error("Route was not found"));
+    }
+    const { url, config } = processGetDeleteRoutesArgs(routeItem, args)
+    return {$this->apiAxiosInstanceName}.{$smallLetterMethod}(url, config)
+}
 
-  const config = args[1] || args[0]
-  return apiAxiosInstance.{$smallLetterMethod}(url, config)
+export function axios{$ucFirstMethodName}<TResponse = any, TUri extends routeRequirementsByUris['$method']['noPayload'] | routeRequirementsByUris['$method']['optionalPayload'] | routeRequirementsByUris['$method']['requiredPayload'] = routeRequirementsByUris['$method']['noPayload'] | routeRequirementsByUris['$method']['optionalPayload'] | routeRequirementsByUris['$method']['requiredPayload']>(
+    url: TUri,
+    config?: AxiosRequestConfig): Promise<AxiosResponse<TResponse>> {
+    return {$this->apiAxiosInstanceName}.{$smallLetterMethod}(url, config)
 }
 
 TS;
@@ -569,50 +568,117 @@ TS;
                 $ucFirstMethodName = ucfirst($smallLetterMethod);
                 $methodsDeclarations .= <<<TS
 
-export function axios{$ucFirstMethodName}ByName<N extends RouteNamesWithSomeRequiredParametersEmptyBody['$method'], P extends LaravelRoutesTypes['$method'][N]['parameters'], B extends LaravelRoutesTypes['$method'][N]['bindings']>(
-  name: N,
-  routeParameter: LaravelRoutesTypes['$method'][N]['parameters_single'] | P | LaravelRoutesTypes['$method'][N]['parameters_array'] | ConvertBindingsToObjects<B, P>,
-  config?: {
-    baseURL?: string
-  }): Promise<AxiosResponse<ApiResponse<RouteItemByNameResponseType[N]>>>
 
-export function axios{$ucFirstMethodName}ByName<N extends RouteNamesWithSomeRequiredParametersWithBody['$method'], P extends LaravelRoutesTypes['$method'][N]['parameters'], B extends LaravelRoutesTypes['$method'][N]['bindings']>(
-  name: N,
-  routeParameter: LaravelRoutesTypes['$method'][N]['parameters_single'] | P | LaravelRoutesTypes['$method'][N]['parameters_array'] | ConvertBindingsToObjects<B, P>,
-  body: RouteItemByNameBodyType[N],
-  config?: {
-    baseURL?: string
-  }): Promise<AxiosResponse<ApiResponse<RouteItemByNameResponseType[N]>>>
+// No Parameters No Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['$method']['noParametersAndNoPayload']>(
+  name: TName,
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<routesTypesByNames['$method'][TName]['response']>>
 
-export function axios{$ucFirstMethodName}ByName<N extends RouteNamesWithEmptyParametersEmptyBody['$method']>(
-  name: N,
-  config?: {
-    baseURL?: string
-  }): Promise<AxiosResponse<ApiResponse<RouteItemByNameResponseType[N]>>>
+// No Parameters Optional Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['$method']['noParametersAndOptionalPayload']>(
+  name: TName,
+  body?: routesTypesByNames['$method'][TName]['payload'],
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<routesTypesByNames['$method'][TName]['response']>>
 
-export function axios{$ucFirstMethodName}ByName<N extends RouteNamesWithEmptyParametersWithBody['$method']>(
-  name: N,
-  body: RouteItemByNameBodyType[N],
-  config?: {
-    baseURL?: string
-  }): Promise<AxiosResponse<ApiResponse<RouteItemByNameResponseType[N]>>>
+// No Parameters Required Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['$method']['noParametersAndRequiredPayload']>(
+  name: TName,
+  body: routesTypesByNames['$method'][TName]['payload'],
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<routesTypesByNames['$method'][TName]['response']>>
 
-export function axios{$ucFirstMethodName}ByName<N extends RouteNamesWithEmptyParametersWithBody['$method'] | RouteNamesWithSomeRequiredParametersWithBody['$method']
-  | RouteNamesWithEmptyParametersEmptyBody['$method'] | RouteNamesWithSomeRequiredParametersEmptyBody['$method']>(
-  name: N,
+// Optional Parameters No Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['$method']['optionalParametersAndNoPayload']>(
+  name: TName,
+  routeParameters?: routesTypesByNames['$method'][TName]['routeParameters'],
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<routesTypesByNames['$method'][TName]['response']>>
+
+// Optional Parameters Optional Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['$method']['optionalParametersAndOptionalPayload']>(
+  name: TName,
+  routeParameters?: routesTypesByNames['$method'][TName]['routeParameters'],
+  body?: routesTypesByNames['$method'][TName]['payload'],
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<routesTypesByNames['$method'][TName]['response']>>
+
+// Optional Parameters Required Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['$method']['optionalParametersAndRequiredPayload']>(
+  name: TName,
+  routeParameters: routesTypesByNames['$method'][TName]['routeParameters'] | null,
+  body: routesTypesByNames['$method'][TName]['payload'],
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<routesTypesByNames['$method'][TName]['response']>>
+
+// Required Parameters No Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['$method']['requiredParametersAndNoPayload']>(
+  name: TName,
+  routeParameters: routesTypesByNames['$method'][TName]['routeParameters'],
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<routesTypesByNames['$method'][TName]['response']>>
+
+// Required Parameters Optional Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['$method']['requiredParametersAndOptionalPayload']>(
+  name: TName,
+  routeParameters: routesTypesByNames['$method'][TName]['routeParameters'],
+  body?: routesTypesByNames['$method'][TName]['payload'],
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<routesTypesByNames['$method'][TName]['response']>>
+
+// Required Parameters Required Payload
+export function axios{$ucFirstMethodName}ByName<TName extends routeRequirementsByNames['$method']['requiredParametersAndRequiredPayload']>(
+  name: TName,
+  routeParameters: routesTypesByNames['$method'][TName]['routeParameters'] | null,
+  body: routesTypesByNames['$method'][TName]['payload'],
+  config?: AxiosRequestConfig,
+): Promise<AxiosResponse<routesTypesByNames['$method'][TName]['response']>>
+
+
+export function axios{$ucFirstMethodName}ByName<TName extends keyof routesTypesByNames['$method']>(
+  name: TName,
   ...args: any[]
-): Promise<AxiosResponse<ApiResponse<RouteItemByNameResponseType[N]>>> {
-  const routeObject = laravelRoutes.{$method}[name] as RouteItemType
-  const { config, body, routeParameters } = processPostPutRoutesArgs(routeObject, args)
+): Promise<AxiosResponse<routesTypesByNames['$method'][TName]['response']>> {
+    let routeItem = {$this->routesDefinitionConstName}[name];
+    if (!routeItem) {
+        return Promise.reject(new Error("Route was not found"));
+    }
+    const { config, body, routeParameters } = processPostPutRoutesArgs(routeItem, args)
 
-  return apiAxiosInstance.{$smallLetterMethod}({$smallLetterMethod}RoutePath(name, routeParameters), body, config)
+    let url = generateRouteUrl(routeItem, routeParameters);
+    return {$this->apiAxiosInstanceName}.{$smallLetterMethod}(url, body, config)
 }
+
+export function axios{$ucFirstMethodName}<TResponse = any, TUri extends routeRequirementsByUris['$method']['noPayload'] = routeRequirementsByUris['$method']['noPayload']>(
+  url: TUri,
+  body?: null | [] | never,
+  config?: AxiosRequestConfig): Promise<AxiosResponse<TResponse>>
+
+export function axios{$ucFirstMethodName}<TResponse = any, TUri extends routeRequirementsByUris['$method']['optionalPayload'] = routeRequirementsByUris['$method']['optionalPayload']>(
+  url: TUri,
+  body?: any,
+  config?: AxiosRequestConfig): Promise<AxiosResponse<TResponse>>
+
+export function axios{$ucFirstMethodName}<TResponse = any, TUri extends routeRequirementsByUris['$method']['requiredPayload'] = routeRequirementsByUris['$method']['requiredPayload']>(
+  url: TUri,
+  body: any,
+  config?: AxiosRequestConfig): Promise<AxiosResponse<TResponse>>
+
+
+export function axios{$ucFirstMethodName}<TResponse = any, TUri extends routeRequirementsByUris['$method']['noPayload'] | routeRequirementsByUris['$method']['optionalPayload'] | routeRequirementsByUris['$method']['requiredPayload'] = routeRequirementsByUris['$method']['noPayload'] | routeRequirementsByUris['$method']['optionalPayload'] | routeRequirementsByUris['$method']['requiredPayload']>(
+  url: TUri,
+  body?: any,
+  config?: AxiosRequestConfig): Promise<AxiosResponse<TResponse>>{
+   return {$this->apiAxiosInstanceName}.{$smallLetterMethod}(url, body, config)
+  }
+
 TS;
             }
 
         }
 
-        $methodsDeclarations .= false === config('hdd-laravel-helpers.routes_types_methods_declarations',false) ? '' : <<<'TS'
+        $methodsDeclarations .= config('hdd-laravel-helpers.routes_types_methods_declarations', false) === false ? '' : <<<'TS'
 
 // Name Without Route Params & Without Body
 export function axiosRequestByName<T extends keyof LaravelRoutesTypes['GET'], K extends LaravelRoutesTypes['GET'][T]['parameters']>(
@@ -676,7 +742,7 @@ TS;
             $rootPrefix = $prefix . $rootPrefix;
         }
         if (empty($rulesList)) {
-            return $rootPrefix . 'never' . (! empty($rootPrefix) ? PHP_EOL : '');
+            return $rootPrefix . 'never' . (!empty($rootPrefix) ? PHP_EOL : '');
         }
         $bodyRules = $rootPrefix;
         $result = Arr::map($rulesList, function ($rules) {
@@ -714,7 +780,7 @@ TS;
                             'numeric', 'integer' => 'number',
                             default => '',
                         };
-                        if (! empty($x)) {
+                        if (!empty($x)) {
                             $typeResultList[] = $x;
                         }
                     }
@@ -733,7 +799,7 @@ TS;
             }
         });
         $bodyRules .= Arr::join($result, ' & ');
-        $bodyRules .= (! empty($rootPrefix) ? PHP_EOL : '');
+        $bodyRules .= (!empty($rootPrefix) ? PHP_EOL : '');
 
         return $bodyRules;
     }
@@ -764,7 +830,7 @@ TS;
         $typesResponsesStr = '{' . PHP_EOL;
         foreach ($routes['types'] as $paths) {
             foreach ($paths as $pathData) {
-                if (! $pathData['name']) {
+                if (!$pathData['name']) {
                     continue;
                 }
                 $typesResponsesStr .= $this->tabSpace(1) . "'" . $pathData['name'] . "': " . $this->getBodyRules($pathData['rulesList'] ?: [], $this->tabSpace(1), '') . PHP_EOL;
@@ -800,12 +866,537 @@ TS;
         $typesResponsesStr = '{' . PHP_EOL;
         foreach ($methodsRoutesList as $method => $names) {
             $typesResponsesStr .= $this->tabSpace(1) . $method . ': '
-              . (Arr::join(Arr::map($names, fn ($i) => "'" . $i . "'"), ' | ') ?: 'never')
-              . PHP_EOL;
+                . (Arr::join(Arr::map($names, fn($i) => "'" . $i . "'"), ' | ') ?: 'never')
+                . PHP_EOL;
         }
 
         $typesResponsesStr .= '}';
 
         return $typesResponsesStr;
+    }
+
+    private function generaRoutesTypescriptDefinition(Collection $routes): string
+    {
+
+        $str = new AppendableString();
+        $byUriStr = new AppendableString();
+        $interfaceName = "routesTypesByNames";
+        $interfaceByUriName = "routesTypesByUris";
+        $str->append("interface $interfaceName {")->append(PHP_EOL);
+        $byUriStr->append("interface $interfaceByUriName {")->append(PHP_EOL);
+
+        $routeNames = [
+            'GET' => [
+                'noParametersAndNoPayload' => [],
+                'noParametersAndOptionalPayload' => [],
+                'noParametersAndRequiredPayload' => [],
+                'optionalParametersAndNoPayload' => [],
+                'optionalParametersAndOptionalPayload' => [],
+                'optionalParametersAndRequiredPayload' => [],
+                'requiredParametersAndNoPayload' => [],
+                'requiredParametersAndOptionalPayload' => [],
+                'requiredParametersAndRequiredPayload' => [],
+            ],
+            'POST' => [
+                'noParametersAndNoPayload' => [],
+                'noParametersAndOptionalPayload' => [],
+                'noParametersAndRequiredPayload' => [],
+                'optionalParametersAndNoPayload' => [],
+                'optionalParametersAndOptionalPayload' => [],
+                'optionalParametersAndRequiredPayload' => [],
+                'requiredParametersAndNoPayload' => [],
+                'requiredParametersAndOptionalPayload' => [],
+                'requiredParametersAndRequiredPayload' => [],
+            ],
+            'PUT' => [
+                'noParametersAndNoPayload' => [],
+                'noParametersAndOptionalPayload' => [],
+                'noParametersAndRequiredPayload' => [],
+                'optionalParametersAndNoPayload' => [],
+                'optionalParametersAndOptionalPayload' => [],
+                'optionalParametersAndRequiredPayload' => [],
+                'requiredParametersAndNoPayload' => [],
+                'requiredParametersAndOptionalPayload' => [],
+                'requiredParametersAndRequiredPayload' => [],
+            ],
+            'DELETE' => [
+                'noParametersAndNoPayload' => [],
+                'noParametersAndOptionalPayload' => [],
+                'noParametersAndRequiredPayload' => [],
+                'optionalParametersAndNoPayload' => [],
+                'optionalParametersAndOptionalPayload' => [],
+                'optionalParametersAndRequiredPayload' => [],
+                'requiredParametersAndNoPayload' => [],
+                'requiredParametersAndOptionalPayload' => [],
+                'requiredParametersAndRequiredPayload' => [],
+            ],
+        ];
+
+        $routeUrls = [
+            'GET' => [
+                'noPayload' => [],
+                'optionalPayload' => [],
+                'requiredPayload' => [],
+            ],
+            'POST' => [
+                'noPayload' => [],
+                'optionalPayload' => [],
+                'requiredPayload' => [],
+            ],
+            'PUT' => [
+                'noPayload' => [],
+                'optionalPayload' => [],
+                'requiredPayload' => [],
+            ],
+            'DELETE' => [
+                'noPayload' => [],
+                'optionalPayload' => [],
+                'requiredPayload' => [],
+            ],
+        ];
+
+        $strRoutesByName = $this->generateTypeDefinitionForRoutes($routes->whereNotNull('name')->groupBy('method'), $routeNames, $interfaceName, 'name');
+        $strRoutesByUri = $this->generateTypeDefinitionForRoutes($routes->map(function ($item) {
+            $uri = preg_replace_callback('/\{([^}]+)}/', function ($matches) {
+                $placeholder = $matches[1];
+                if (str_ends_with($placeholder, '?')) {
+                    return '${string | null}';
+                } else {
+                    return '${string}';
+                }
+            }, $item['uri']);
+
+            $item['uri'] = $uri;
+            return $item;
+        })->groupBy('method'), $routeUrls, $interfaceByUriName, 'uri');
+        $str->append($strRoutesByName);
+        $str->append('}')->append(PHP_EOL);
+        $byUriStr->append($strRoutesByUri);
+        $byUriStr->append('}')->append(PHP_EOL);
+
+        // Joining byUriStr to real Str:
+        // $str->append($byUriStr->toString());
+        // $str->append(PHP_EOL);
+        // Route Names Type
+        $str->append("interface routeRequirementsByNames {")->append(PHP_EOL);
+
+        foreach ($routeNames as $methodName => $names) {
+            $str->append($this->tabSpace(1));
+            $str->append(strtoupper($methodName) . ': ')->append('{');
+            foreach ($names as $typeOfName => $namesList) {
+                $str->append(PHP_EOL)
+                    ->append($this->tabSpace(2));
+
+                $str->append("'$typeOfName': ")
+                    ->append(!empty($namesList) ? join(' | ', $namesList) : 'never');
+
+            }
+            $str->append(PHP_EOL)
+                ->append($this->tabSpace(1))
+                ->append('}')
+                ->append(PHP_EOL);
+        }
+        $str->append('}')->append(PHP_EOL);
+
+
+        // Route Uris Type
+        $str->append("interface routeRequirementsByUris {")->append(PHP_EOL);
+
+        foreach ($routeUrls as $methodName => $uris) {
+            $str->append($this->tabSpace(1));
+            $str->append(strtoupper($methodName) . ': ')->append('{');
+            foreach ($uris as $typeOfName => $urisList) {
+                $str->append(PHP_EOL)
+                    ->append($this->tabSpace(2));
+
+                $str->append("'$typeOfName': ")
+                    ->append(!empty($urisList) ? join(' | ', array_map(function ($i) {
+                        $result = preg_replace_callback('/\{([^}]+)}/', function ($matches) {
+                            $placeholder = $matches[1];
+                            if (str_ends_with($placeholder, '?')) {
+                                return '${string | null}';
+                            } else {
+                                return '${string}';
+                            }
+                        }, $i);
+                        return "`$result`";
+                    }, $urisList)) : 'never');
+
+            }
+            $str->append(PHP_EOL)
+                ->append($this->tabSpace(1))
+                ->append('}')
+                ->append(PHP_EOL);
+        }
+        $str->append('}')->append(PHP_EOL);
+
+
+        return $str->toString();
+
+        /*if (empty($methodsRoutesList)) {
+            return 'never' . PHP_EOL;
+        }
+        $typesResponsesStr = '{' . PHP_EOL;
+        foreach ($methodsRoutesList as $method => $names) {
+            $typesResponsesStr .= $this->tabSpace(1) . $method . ': '
+                . (Arr::join(Arr::map($names, fn ($i) => "'" . $i . "'"), ' | ') ?: 'never')
+                . PHP_EOL;
+        }
+
+        $typesResponsesStr .= '}';
+
+        return $typesResponsesStr;*/
+    }
+
+    /**
+     * @return array{isRequired: true|false, types: string[]}[]
+     */
+    private function getTypesFromRules(array|string $rules, Collection $allRules, $name): array
+    {
+        if (is_string($rules)) {
+            $rules = explode('|', $rules);
+        }
+        $isRequired = false;
+        $types = [];
+        foreach ($rules as $rule) {
+            if (is_object($rule)) {
+                $rule = class_basename($rule);
+            }
+            switch ($rule) {
+                case 'required':
+                case RequiredIf::class:
+                    $isRequired = true;
+                    break;
+                case 'string':
+                    $types[] = 'string';
+                    break;
+                case 'integer':
+                case 'decimal':
+                case 'float':
+                case 'number':
+                case 'numeric':
+                    $types[] = 'number';
+                    break;
+                case 'boolean':
+                    $types[] = 'boolean';
+                    break;
+                case 'nullable':
+                    $types[] = 'null';
+                    break;
+                case 'array':
+
+                    $ruleSubRules = $allRules->where(function ($_, $rule2) use ($name) {
+                        return Str::startsWith($rule2, $name . '.*.');
+                    });
+                    if ($ruleSubRules->isNotEmpty()) {
+                        $str = new AppendableString("{ ");
+                        $str->append($ruleSubRules->map(function ($ruleSubRule, $ruleSubRuleKey) use ($name, &$isRequired, $rules) {
+                            $definitions = $this->getTypesFromRules($ruleSubRule, collect($rules), $ruleSubRuleKey);
+                            if ($definitions['isRequired'] === true) {
+                                $isRequired = true;
+                            } else {
+                                $ruleSubRuleKey .= "?";
+                            }
+                            return str(Str::after($ruleSubRuleKey, $name . '.*.'))->append(": ")->append(join('& ', $definitions['types']))->toString();
+
+                        })->join(", "));
+                        $str->append(" }");
+                        $types[] = $str->toString() . '[]';
+                    } else {
+                        $ruleFlatSubRules = $allRules->firstWhere(function ($_, $rule2) use ($name) {
+                            return $rule2 === $name . '.*';
+                        });
+
+                        if ($ruleFlatSubRules) {
+                            $str = new AppendableString("(");
+
+                            $definitions = $this->getTypesFromRules($ruleFlatSubRules, collect($rules), ".*");
+                            if ($definitions['isRequired'] === true) {
+                                $isRequired = true;
+                            }
+                            $str->append(join(' & ', $definitions['types']));
+
+                            $str->append(")");
+                            $types[] = $str->toString() . '[]';
+                        } else {
+                            $types[] = 'any[]';
+                        }
+
+                    }
+                    break;
+                case 'object':
+                    $types[] = "{ [p in string]: any }";
+                    break;
+            }
+        }
+
+        if (empty($types)) {
+            $types = ['any'];
+        }
+
+        return ['isRequired' => $isRequired, 'types' => $types,];
+    }
+
+
+    private function parseMethodReturnTypeFromDocComment(ReflectionMethod $method): ?string
+    {
+        $docComment = $method->getDocComment();
+        if (!$docComment) {
+            return null;
+        }
+
+        $docBlock = $this->docBlockFactory->create($docComment);
+        $varTag = $docBlock->getTagsByName('return')[0] ?? null;
+
+        if (!$varTag) {
+            return null;
+        }
+
+        $typeString = (string)$varTag;
+
+        return $this->convertPhpDocTypeToTs($typeString);
+    }
+
+    private function convertPhpDocTypeToTs(string $phpDocType): string
+    {
+
+        if (Str::contains($phpDocType, '|')) {
+            return collect(explode('|', $phpDocType))->map(fn($part) => $this->convertPhpDocTypeToTs($part))->unique()->join(" | ");
+        }
+
+        // Handle array of specific types
+        if (Str::startsWith($phpDocType, 'array') && preg_match('/^array<([^,]+)>$/', $phpDocType, $matches)) {
+            return $this->convertPhpDocTypeToTs($matches[1]) . '[]';
+        }
+        // Handle array of object
+        if (Str::startsWith($phpDocType, 'array') && preg_match('/^array([^,]+)>$/', $phpDocType, $matches)) {
+            return $this->convertPhpDocTypeToTs($matches[1]) . '[]';
+        }
+
+        if (Str::startsWith($phpDocType, 'array') && preg_match_all('/(\w+):\s*([\w\\\]+|\w+<[\w\\\]+>)/', $phpDocType, $matches, PREG_SET_ORDER)) {
+            $tsProperties = [];
+
+            foreach ($matches as $match) {
+                $property = $match[1]; // Property name
+                $phpType = $match[2];  // PHP type
+
+                $tsType = $this->convertPhpDocTypeToTs($phpType);;
+
+                $tsProperties[] = "$property: $tsType";
+            }
+
+            if (empty($tsProperties)) {
+                return "{ }";
+            }
+
+            return "{ " . implode(", ", $tsProperties) . " }";
+        }
+        if (isset($this->phpToTsTypeMap[$phpDocType])) {
+            return $this->phpToTsTypeMap[$phpDocType];
+        } else {
+            $converted = str($phpDocType)->replace('\ApiJsonResponse', 'ApiResponseData')->replace('<\\', '<')->toString();
+            $betweenBrackets = str($converted)->between('<', '>')->toString();
+            if (!empty($betweenBrackets) && Str::startsWith($betweenBrackets, 'array')) {
+                $betweenBracketsIntoType = $this->convertPhpDocTypeToTs($betweenBrackets);
+                $converted = str($converted)->replace($betweenBrackets, $betweenBracketsIntoType)->toString();
+            }
+            if (str($converted)->contains('ApiResponseData')) {
+                if (!in_array('ApiResponseData', $this->typescriptTypesToImport)) {
+                    $this->typescriptTypesToImport[] = 'ApiResponseData';
+                }
+                $dataType = str($converted)->between('<', '>')->toString();
+                if (isset($this->phpToTsTypeMap[$dataType])) {
+                    $converted = str($converted)->replace($dataType, $this->phpToTsTypeMap[$dataType])->toString();
+                } else {
+                    if (!empty($dataType) && !in_array($dataType, $this->typescriptTypesToImport) && Str::doesntContain($dataType, [' ', '{', '}', ':', '|'])) {
+                        $this->typescriptTypesToImport[] = $dataType;
+                    }
+                }
+
+            } else {
+                $converted = Str::afterLast($converted, '\\');
+                if (!empty($converted) && !in_array($converted, $this->typescriptTypesToImport) && Str::doesntContain($converted, [' ', '{', '}', ':', '|'])) {
+                    $this->typescriptTypesToImport[] = $converted;
+                }
+            }
+            if (in_array($converted, $this->typescriptTypesToImportIgnoreList)) {
+                return "any";
+            }
+            return $converted;
+        }
+
+    }
+
+    private function generateTypeDefinitionForRoutes(Collection $groups, array &$routeNamesOrUris, $interfaceName, string $useProperty = 'name'): string
+    {
+        $str = new AppendableString('');
+        $groups->each(function (Collection $items, string $methodName) use ($useProperty, &$routeNamesOrUris, $interfaceName, $str) {
+
+            $str->append($this->tabSpace(1));
+            $str->append(strtoupper($methodName) . ': ')->append('{');
+            if ($items->isNotEmpty()) {
+                $str->append(PHP_EOL);
+            } else {
+                $str->append(' ');
+            }
+            $items->unique($useProperty)->each(function (array $item) use ($useProperty, &$routeNamesOrUris, $methodName, $interfaceName, $str) {
+                $str->append($this->tabSpace(2));
+                $str->append("'$item[$useProperty]': {")->append(PHP_EOL);
+                // Parameters:
+
+                $str->append($this->tabSpace(3))->append("routeParameters: ");
+                $parameters = collect($item['parameters']);
+                $parametersHasRequired = false;
+
+                if ($parameters->isEmpty()) {
+                    $str->append('never | null');
+                } else {
+                    $requiredCount = $parameters->where('isRequired', true)->count();
+                    $parametersHasRequired = $requiredCount > 0;
+                    if ($requiredCount === 1) {
+                        $str->append('ParameterType | ');
+                    } else if ($requiredCount === 0) {
+                        $str->append('ParameterType | null | ');
+                    }
+                    for ($i = $requiredCount; $i <= $parameters->count(); $i++) {
+                        $str->append('[ ');
+                        for ($k = 0; $k < $i; $k++) {
+                            $str->append('ParameterType');
+                            if ($k < $i - 1) {
+                                $str->append(', ');
+                            }
+                        }
+                        $str->append(' ]');
+
+                        if ($i < $parameters->count()) {
+                            $str->append(' | ');
+                        }
+                    }
+                    $str->append(' | { ');
+                    $str->append($parameters->map(function ($parameter) {
+                        return "$parameter[name]" . ($parameter['isRequired'] ? '' : '?') . ": ParameterType";
+                    })->join(", "));
+                    $str->append(' }');
+
+                    $bindableParameters = $parameters->filter(function ($parameter) {
+                        return !empty($parameter['binding']);
+                    });
+                    if ($bindableParameters->isNotEmpty()) {
+                        $str->append(' | { ');
+                        $str->append($bindableParameters->map(function ($parameter) {
+                            return "$parameter[binding]" . ($parameter['isRequired'] ? '' : '?') . ": ParameterType";
+                        })->join(", "));
+                        $str->append(' }');
+                    }
+                }
+
+                // Payload
+                $str->append(PHP_EOL);
+
+                $str->append($this->tabSpace(3))->append("payload: ");
+                $rules = collect($item['rules']);
+                $rulesHasRequired = false;
+                if ($rules->isEmpty()) {
+                    $str->append('never');
+                } else {
+                    $str->append("{")->append(PHP_EOL);
+
+                    $rules->each(function (string|array $rule, $name) use ($rules, $str, &$rulesHasRequired) {
+
+                        // This excludes array and nested objects
+                        if (Str::contains($name, ['*', '.'])) {
+                            return;
+                        }
+                        $str->append($this->tabSpace(4));
+
+                        // $str->append("'$name'" . ': ');
+
+                        $rulesDefinition = $this->getTypesFromRules($rule, $rules, $name);
+                        if ($rulesDefinition['isRequired']) {
+                            $rulesHasRequired = true;
+                        } else {
+                            $name = $name . "?";
+                        }
+
+                        $str->append("$name" . ': ');
+                        $str->append(join('& ', $rulesDefinition['types']));
+                        $str->append(PHP_EOL);
+                    });
+                    $str->append($this->tabSpace(3))->append("}");
+                }
+                //
+
+                // AxiosConfigParams
+                $str->append(PHP_EOL);
+
+                $str->append($this->tabSpace(3))->append("payloadAsAxiosConfig: {")
+                    ->append(PHP_EOL)
+                    ->append($this->tabSpace(4))
+                    ->append("params");
+
+                if (!$rulesHasRequired) {
+                    $str->append("?");
+                }
+                $str->append(": " . $interfaceName . "['$methodName']['" . $item[$useProperty] . "']['payload']");
+                $str->append(PHP_EOL);
+                $str->append($this->tabSpace(3))->append("}");
+
+
+                // Response:
+
+                $str->append(PHP_EOL);
+
+                $str->append($this->tabSpace(3))->append("response: ");
+
+                if (!empty($item['response'])) {
+                    $str->append($item['response']);
+                } else {
+                    $str->append('any');
+                }
+
+
+                //
+
+                $str->append(PHP_EOL)->append($this->tabSpace(2))->append('}');
+                $str->append(PHP_EOL);
+
+                if (!isset($routeNamesOrUris[$methodName])) {
+                    $routeNamesOrUris[$methodName] = [];
+                }
+
+                $payloadStr = "AndNoPayload";
+                if ($rulesHasRequired) {
+                    $payloadStr = "AndRequiredPayload";
+                } else if ($rules->isNotEmpty()) {
+                    $payloadStr = "AndOptionalPayload";
+                }
+
+                $parametersStr = "noParameters";
+                if ($parametersHasRequired) {
+                    $parametersStr = "requiredParameters";
+                } else if ($parameters->isNotEmpty()) {
+                    $parametersStr = "optionalParameters";
+                }
+
+                if ($useProperty === 'name') {
+                    if (!isset($routeNamesOrUris[$methodName][$parametersStr . $payloadStr])) {
+                        $routeNamesOrUris[$methodName][$parametersStr . $payloadStr] = [];
+                    }
+                    $routeNamesOrUris[$methodName][$parametersStr . $payloadStr][] = "'$item[name]'";
+                } else if ($useProperty === 'uri') {
+                    $payloadStrWithoutAnd = str($payloadStr)->after('And')->lcfirst()->toString();
+                    if (!isset($routeNamesOrUris[$methodName][$payloadStrWithoutAnd])) {
+                        $routeNamesOrUris[$methodName][$payloadStrWithoutAnd] = [];
+                    }
+                    $routeNamesOrUris[$methodName][$payloadStrWithoutAnd][] = $item['uri'];
+                }
+
+            });
+            $str->append($this->tabSpace(1));
+            $str->append('}');
+            $str->append(PHP_EOL);
+        });
+
+        return $str;
     }
 }

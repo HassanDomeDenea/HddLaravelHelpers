@@ -47,9 +47,7 @@ class PrimeVueDataTableService
      */
     protected mixed $_dataClass = null;
 
-    public function __construct()
-    {
-    }
+    public function __construct() {}
 
     public function setPayload($data = null): self
     {
@@ -59,8 +57,8 @@ class PrimeVueDataTableService
     }
 
     /**
-     * @param class-string<TModel>|Builder<TModel> $modelName
-     * @param class-string<Data> $dataClassName
+     * @param  class-string<TModel>|Builder<TModel>  $modelName
+     * @param  class-string<Data>  $dataClassName
      * @return $this
      *
      * @noinspection PhpDocSignatureInspection
@@ -103,7 +101,7 @@ class PrimeVueDataTableService
                 $this->joins[] = $name;
             }
         } else {
-            if (!Arr::has($this->joins, $relationName)) {
+            if (! Arr::has($this->joins, $relationName)) {
                 $this->joins[] = $relationName;
             }
         }
@@ -121,7 +119,7 @@ class PrimeVueDataTableService
                 $this->relations[] = $name;
             }
         } else {
-            if (!Arr::has($this->relations, $relationName)) {
+            if (! Arr::has($this->relations, $relationName)) {
                 $this->relations[] = $relationName;
             }
         }
@@ -139,7 +137,7 @@ class PrimeVueDataTableService
                 $this->relationsCounts[] = $name;
             }
         } else {
-            if (!Arr::has($this->relationsCounts, $relationName)) {
+            if (! Arr::has($this->relationsCounts, $relationName)) {
                 $this->relationsCounts[] = $relationName;
             }
         }
@@ -148,7 +146,7 @@ class PrimeVueDataTableService
     }
 
     /**
-     * @param Builder<TModel> $query
+     * @param  Builder<TModel>  $query
      */
     private function processJoinsAndRelations(Builder $query): void
     {
@@ -158,17 +156,17 @@ class PrimeVueDataTableService
                 $joinNamesList = explode('.', $joinName);
                 $joinNamesAliases = [];
                 foreach ($joinNamesList as $joinNameAlias) {
-                    $joinNamesAliases[$joinNameAlias] = fn($join2) => $join2->as($joinNameAlias);
+                    $joinNamesAliases[$joinNameAlias] = fn ($join2) => $join2->as($joinNameAlias);
                 }
                 $query->leftJoinRelationship($join, $joinNamesAliases);
             } else {
                 $query->leftJoinRelationshipUsingAlias($join, $joinName);
             }
         }
-        if (!empty($this->relations)) {
+        if (! empty($this->relations)) {
             $query->with(array_unique($this->relations));
         }
-        if (!empty($this->relationsCounts)) {
+        if (! empty($this->relationsCounts)) {
 
             $query->withCount(array_unique($this->relationsCounts));
         }
@@ -183,7 +181,7 @@ class PrimeVueDataTableService
     }
 
     /**
-     * @param callable(Builder<TModel>):void $callback
+     * @param  callable(Builder<TModel>):void  $callback
      * @return $this
      */
     public function modifyQuery(callable $callback): self
@@ -206,7 +204,7 @@ class PrimeVueDataTableService
         if (Str::contains($column, '.')) {
             $field = $this->payload->fields->where('filterField', $column)->first();
 
-            if (!in_array($field?->source->value, [FieldType::json->value, FieldType::relationMany->value])) {
+            if (! in_array($field?->source->value, [FieldType::json->value, FieldType::relationMany->value])) {
                 $this->joinRelation(Str::beforeLast($column, '.'));
             }
         }
@@ -217,30 +215,25 @@ class PrimeVueDataTableService
         /** @var Field|null $field */
         $field = $this->payload->fields->where($sortOrFilterColumnName, $columnName)->first();
 
-        if (!Str::contains($columnName, '.')) {
+        if (! Str::contains($columnName, '.')) {
 
-            if (!$this->payload->fields->where('name', $columnName)->whereIn('source', [FieldType::relationCount, FieldType::jsonArray, FieldType::relationMany])->first()) {
-                $columnName = $this->mainTableName . '.' . $columnName;
+            if (! $this->payload->fields->where('name', $columnName)->whereIn('source', [FieldType::relationCount, FieldType::jsonArray, FieldType::relationMany])->first()) {
+                $columnName = $this->mainTableName.'.'.$columnName;
             }
         } elseif ($field?->source->value === FieldType::json->value) {
 
             $columnName = Str::replace('.', '->', $field->filterField);
         } elseif (substr_count($columnName, '.') > 1) {
             $relationName = Str::afterLast(Str::beforeLast($columnName, '.'), '.');
-            $columnName = $relationName . Str::after($columnName, $relationName);
+            $columnName = $relationName.Str::after($columnName, $relationName);
         }
 
         return $columnName;
     }
 
     /**
-     * @param string $columnName
-     * @param mixed $value
-     * @param FilterMatchMode $matchMode
-     * @param Builder<TModel>|null $query
-     * @param 'where'|'whereNot' $method
-     * @param bool $skipChecking
-     * @return void
+     * @param  Builder<TModel>|null  $query
+     * @param  'where'|'whereNot'  $method
      */
     private function addFilterToField(string $columnName, mixed $value, FilterMatchMode $matchMode = FilterMatchMode::contains, ?Builder $query = null, string $method = 'where', bool $skipChecking = false): void
     {
@@ -250,7 +243,7 @@ class PrimeVueDataTableService
         $isRelationManyField = false;
         $originalMethod = $method;
 
-        if (!$skipChecking) {
+        if (! $skipChecking) {
             $this->checkNestedColumnName($columnName);
             $this->modifyColumnName($columnName, 'filterField');
             if ($this->payload->fields->where('name', $columnName)->where('source', FieldType::relationCount)->first()) {
@@ -274,7 +267,7 @@ class PrimeVueDataTableService
                 $matchMode, $value, $columnName
             ) {
                 //                $q->where($columnName,$value);
-                $this->addFilterToField($isRelationManyField . '.' . $columnName, $value, $matchMode, $q, 'where', true);
+                $this->addFilterToField($isRelationManyField.'.'.$columnName, $value, $matchMode, $q, 'where', true);
             });
 
             return;
@@ -283,7 +276,7 @@ class PrimeVueDataTableService
         switch ($matchMode) {
             case FilterMatchMode::contains:
                 $operator = 'LIKE';
-                $value = '%' . $value . '%';
+                $value = '%'.$value.'%';
                 break;
             case FilterMatchMode::containsAll:
                 $operator = 'closure';
@@ -301,15 +294,15 @@ class PrimeVueDataTableService
                 break;
             case FilterMatchMode::notContains:
                 $operator = 'NOT LIKE';
-                $value = '%' . $value . '%';
+                $value = '%'.$value.'%';
                 break;
             case FilterMatchMode::startsWith:
                 $operator = 'LIKE';
-                $value = $value . '%';
+                $value = $value.'%';
                 break;
             case FilterMatchMode::endsWith:
                 $operator = 'LIKE';
-                $value = '%' . $value;
+                $value = '%'.$value;
                 break;
             case FilterMatchMode::equals:
                 $operator = '=';
@@ -362,9 +355,9 @@ class PrimeVueDataTableService
                 $operator = '>=';
                 break;
             case FilterMatchMode::containsAny:
-                //TODO: Implement
+                // TODO: Implement
                 break;
-                //throw new \Exception('To be implemented');
+                // throw new \Exception('To be implemented');
         }
 
         if ($onlyColumnName || ($value !== null)) {
@@ -382,7 +375,7 @@ class PrimeVueDataTableService
                     $nameOfValueParameter, $method, $value, $columnName
                 ) {
                     foreach ($value as $v) {
-                        if (!$isRelationCountField) {
+                        if (! $isRelationCountField) {
                             $params['operator'] = 'LIKE';
                             $params[$nameOfValueParameter] = "%$v%";
                         } else {
@@ -394,7 +387,7 @@ class PrimeVueDataTableService
                 });
             } else {
                 $params = [];
-                if (!$onlyColumnName) {
+                if (! $onlyColumnName) {
                     if ($operator) {
                         $params['operator'] = $operator;
                     }
@@ -465,8 +458,8 @@ class PrimeVueDataTableService
             /** @var Field|null $field */
             $field = $this->payload->fields->where('name', $columnName)->first();
             if ($field?->source === FieldType::custom) {
-                //ray(true);
-                //TODO: Adding Custom Handling
+                // ray(true);
+                // TODO: Adding Custom Handling
             } else {
                 $this->modifyColumnName($columnName, 'sortField');
             }
@@ -475,7 +468,7 @@ class PrimeVueDataTableService
     }
 
     /**
-     * @param Collection<Field> $fields
+     * @param  Collection<Field>  $fields
      */
     private function checkColumnsForRelations(Collection $fields): void
     {
@@ -499,7 +492,7 @@ class PrimeVueDataTableService
     }
 
     /**
-     * @param class-string<Data> $dataClassName
+     * @param  class-string<Data>  $dataClassName
      * @return $this
      *
      * @noinspection PhpDocSignatureInspection
@@ -512,7 +505,7 @@ class PrimeVueDataTableService
     }
 
     /**
-     * @param callable(Collection):Collection $callback
+     * @param  callable(Collection):Collection  $callback
      * @return $this
      */
     public function modifyItemsCollection(callable $callback): self
@@ -530,7 +523,7 @@ class PrimeVueDataTableService
         //        ray()->clearScreen();
         //        ray()->showQueries();
 
-        if (!$this->payload) {
+        if (! $this->payload) {
             $this->setPayload();
         }
         $payload = $this->payload;
@@ -546,12 +539,12 @@ class PrimeVueDataTableService
         $totalWithoutFilters = $countQuery->count();
 
         $this->processJoinsAndRelations($this->query);
-        //Log::debug($hasFilters);
+        // Log::debug($hasFilters);
         $this->processAddedCustomColumns();
 
         $total = $hasFilters ? $this->query->count() : $totalWithoutFilters;
 
-        //$columns = $this->setColumns();
+        // $columns = $this->setColumns();
 
         if ($payload->perPage !== -1) {
             $this->query
@@ -559,7 +552,7 @@ class PrimeVueDataTableService
                 ->limit($payload->perPage);
         }
 
-        if (!empty($this->payload->includes)) {
+        if (! empty($this->payload->includes)) {
             $this->query->with($this->payload->includes);
         }
 

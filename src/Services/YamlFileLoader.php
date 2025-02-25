@@ -48,7 +48,7 @@ class YamlFileLoader extends FileLoader
             $parser = new Parser;
             $content = $parser->parse(file_get_contents($file));
             $dir = dirname($cashedFile);
-            if(!is_dir($dir)) {
+            if (! is_dir($dir)) {
                 mkdir($dir, 0777, true);
             }
             file_put_contents($cashedFile, '<?php'.PHP_EOL.PHP_EOL.'return '.var_export($content, true).';');

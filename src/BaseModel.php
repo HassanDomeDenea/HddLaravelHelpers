@@ -83,7 +83,6 @@ class BaseModel extends Model implements Auditable
             DB::commit();
 
         } catch (Throwable $e) {
-            ray($e);
             throw ValidationException::withMessages(['ids' => [$e->getMessage() ?: __('Error Occurred')]]);
         }
     }

@@ -38,9 +38,10 @@ class BaseCrudController
         return ApiResponse::success($dtService->proceed());
     }
 
-    public function show( $modelId): JsonResponse
+    public function show($modelId): JsonResponse
     {
         $modelInstance = $this->modelClass::findOrFail($modelId);
+
         return ApiResponse::success($modelInstance);
     }
 

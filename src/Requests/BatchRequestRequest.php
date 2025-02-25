@@ -14,7 +14,7 @@ final class BatchRequestRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'requests' => 'required|array',
+            'requests' => ['required','array'],
             'requests.*.method' => 'required|string|in:GET,POST,PUT,PATCH,DELETE',
             'requests.*.url' => ['string', 'required'],
             'requests.*.body' => 'nullable|array',

@@ -31,7 +31,7 @@ class ModelExistsRule implements ValidationRule
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        if ($this->query->where($this->column,$value)->doesntExist()) {
+        if ($this->query->where($this->column, $value)->doesntExist()) {
             $fail(__('validation.exists', ['attribute' => $attribute]));
         }
     }

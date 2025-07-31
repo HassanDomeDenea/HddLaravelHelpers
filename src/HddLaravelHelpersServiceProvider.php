@@ -5,7 +5,9 @@ namespace HassanDomeDenea\HddLaravelHelpers;
 use HassanDomeDenea\HddLaravelHelpers\Commands\AddPermissionsCommand;
 use HassanDomeDenea\HddLaravelHelpers\Commands\GenerateRoutesTypesCommand;
 use HassanDomeDenea\HddLaravelHelpers\Commands\HddLaravelHelpersCommand;
-use HassanDomeDenea\HddLaravelHelpers\Helpers\ApiJsonResponse;
+use HassanDomeDenea\HddLaravelHelpers\Helpers\ApiResponse;
+use HassanDomeDenea\HddLaravelHelpers\Providers\CustomRelationProvider;
+use HassanDomeDenea\HddLaravelHelpers\Providers\YamlTranslationServiceProvider;
 use Illuminate\Routing\ResponseFactory;
 use Illuminate\Support\Facades\Route;
 use Spatie\LaravelPackageTools\Exceptions\InvalidPackage;
@@ -19,9 +21,20 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
      */
     public function register(): void
     {
+        app()->register(YamlTranslationServiceProvider::class);
+        app()->register(CustomRelationProvider::class);
+
+
+
         Route::macro('apiResourceMany', function (string $name, string $controller, ?array $only = null) {
             if ($only === null) {
-                $only = ['search', 'storeMany', 'updateMany', 'destroyMany'];
+                $only = ['search', 'storeMany', 'updateMany', 'destroyMany', 'reorder','list'];
+            }
+            if (in_array('list', $only)) {
+                Route::get($name . '/list', [$controller, 'list'])->name($name . '.list');
+            }
+            if (in_array('reorder', $only)) {
+                Route::put($name . '/reorder', [$controller, 'reorder'])->name($name . '.reorder');
             }
             if (in_array('search', $only)) {
                 Route::get($name . '/search', [$controller, 'search'])->name($name . '.search');
@@ -67,6 +80,7 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
 
         return parent::boot();
     }
+
     public function bootingPackage()
     {
         require_once __DIR__ . '/helpers.php';
@@ -84,7 +98,7 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
         $package
             ->name('HddLaravelHelpers')
             ->hasConfigFile('hdd-laravel-helpers')
-            ->hasRoute('api')
+            ->hasRoutes('api','web')
 //            ->hasViews()
 //            ->hasMigration('create_hddlaravelhelpers_table')
             ->hasCommands(

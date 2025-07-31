@@ -9,7 +9,7 @@ use HassanDomeDenea\HddLaravelHelpers\Actions\HandleBatchRequestAction;
 use HassanDomeDenea\HddLaravelHelpers\Attributes\RequestBodyAttribute;
 use HassanDomeDenea\HddLaravelHelpers\Attributes\ResponseAttribute;
 use HassanDomeDenea\HddLaravelHelpers\Data\BatchResponseData;
-use HassanDomeDenea\HddLaravelHelpers\Helpers\ApiJsonResponse;
+use HassanDomeDenea\HddLaravelHelpers\Helpers\ApiResponse;
 use HassanDomeDenea\HddLaravelHelpers\Requests\BatchRequestRequest;
 
 use Illuminate\Routing\ResponseFactory;
@@ -17,9 +17,9 @@ use Illuminate\Routing\ResponseFactory;
 final class BatchRequestController
 {
     /**
-     * @return ApiJsonResponse<BatchResponseData>
+     * @return ApiResponse<BatchResponseData>
      */
-    public function __invoke(BatchRequestRequest $request, HandleBatchRequestAction $action): ApiJsonResponse
+    public function __invoke(BatchRequestRequest $request, HandleBatchRequestAction $action): ApiResponse
     {
         $responses = $action->handle($request);
 

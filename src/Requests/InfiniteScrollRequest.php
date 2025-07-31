@@ -3,17 +3,21 @@
 namespace HassanDomeDenea\HddLaravelHelpers\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class InfiniteScrollRequest extends FormRequest
 {
     public function rules(): array
     {
         return [
-            'name' => 'nullable|string',
-            'offset' => 'integer',
-            'onlyId' => 'boolean',
-            'limit' => 'integer',
+            'name' => ['nullable', Rule::when($this->boolean('multiple_ids'), ['array'], ['string'])],
+            'offset' => 'integer|gte:0',
+            'only_id' => 'boolean',
+            'multiple_ids' => 'boolean',
+            'limit' => 'integer:gte:1',
             'date' => 'date',
+            'order_by' => 'nullable|string',
+            'order_direction' => 'nullable|in:asc,desc',
         ];
     }
 }

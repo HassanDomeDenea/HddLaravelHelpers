@@ -13,31 +13,35 @@ class GroupedFilter
     /**
      * @var Collection<GroupedFilter> | null
      */
-    public ?Collection $constraints = null;
+    public ?Collection $fields = null;
 
     public ?Filter $filter = null;
 
+    public ?bool $isGroup = false;
+
     public function __construct(
-        public ?bool $isGroup = false,
+
         public ?string $operator = 'and',
-        public ?string $column = null,
-        ?string $matchMode = null,
-        public mixed $value = null,
-        ?array $constraints = null)
+        public ?string $field = null,
+        ?string        $matchMode = null,
+        public mixed   $value = null,
+        ?array         $fields = null,
+    )
     {
         if ($operator !== 'or' && $operator !== 'and') {
             $this->operator = 'and';
         }
 
-        if ($this->isGroup) {
-            if ($constraints) {
-                $this->constraints = collect(Arr::map($constraints, fn ($i) => new GroupedFilter(...$i)));
-            }
-        } else {
+        if (empty($fields) && !empty($this->field)) {
+            $this->isGroup = false;
             if ($matchMode) {
                 $this->matchMode = FilterMatchMode::tryFrom($matchMode) ?: FilterMatchMode::equals;
             }
-            $this->filter = new Filter($this->column, false, $this->value, $matchMode, null, null);
+            $this->filter = new Filter($this->field, false, $this->value, $matchMode, null, null);
+        } else {
+            $this->isGroup = true;
+
+            $this->fields = collect(Arr::map($fields ?: [], fn($i) => new GroupedFilter(...Arr::only($i, ['field', 'matchMode', 'value', 'fields']), ...(empty($i['operator']) ? ['operator' => $this->operator] : []))));
         }
 
     }

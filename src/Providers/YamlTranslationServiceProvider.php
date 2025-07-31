@@ -14,7 +14,6 @@ class YamlTranslationServiceProvider extends IlluminateTranslationServiceProvide
     protected function registerLoader(): void
     {
         $this->app->singleton('translation.loader', function ($app) {
-
             return new YamlFileLoader($app['files'], $app['path.lang']);
         });
     }

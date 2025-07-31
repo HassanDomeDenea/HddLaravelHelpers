@@ -55,6 +55,6 @@ class Filter
 
     public function isGlobal(): bool
     {
-        return $this->name === 'global';
+        return $this->name === '_global';
     }
 }

@@ -14,5 +14,6 @@ return [
      */
     "routes-ts-ignore-responses-types" => [
         'Response', 'JsonResponse'
-    ]
+    ],
+    'hdd-laravel-helpers.with-where-aggregate-use-joins' => true,
 ];

@@ -19,7 +19,9 @@ or add it manually to your composer.json file:
         "url": "../HddLaravelHelpers"
     }
 },
+"minimum-stability": "dev",
 ```
+
 Then run:
 
 ```bash
@@ -30,6 +32,36 @@ Or if the previous one didn't work:
 
 ```bash
 composer require HassanDomeDenea/HddLaravelHelpers  @dev 
+```
+
+## Configurations:
+
+- In config/data.php, update mapping into snake:
+
+```php
+    'name_mapping_strategy' => [
+        'input' => null,
+        'output' => \Spatie\LaravelData\Mappers\SnakeCaseMapper::class,
+    ]
+```
+
+--- in config/typescript-transformer.php, use module writer:
+
+```php
+'writer' => Spatie\TypeScriptTransformer\Writers\ModuleWriter::class,
+'output_file' => resource_path('js/types/laravel_generated.d.ts'),
+'collectors' => [
+        \HassanDomeDenea\HddLaravelHelpers\Collectors\DataTypeScriptCollectorWithNameAliases::class, #To Support Generics
+        Spatie\TypeScriptTransformer\Collectors\DefaultCollector::class,
+        Spatie\TypeScriptTransformer\Collectors\EnumCollector::class,
+    ],
+'transformers' => [
+        Spatie\LaravelTypeScriptTransformer\Transformers\SpatieStateTransformer::class,
+        Spatie\TypeScriptTransformer\Transformers\EnumTransformer::class,
+        Spatie\TypeScriptTransformer\Transformers\SpatieEnumTransformer::class,
+        Spatie\LaravelData\Support\TypeScriptTransformer\DataTypeScriptTransformer::class,
+        Spatie\LaravelTypeScriptTransformer\Transformers\DtoTransformer::class,
+    ],
 ```
 
 ---

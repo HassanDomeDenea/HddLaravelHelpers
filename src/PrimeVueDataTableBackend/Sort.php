@@ -6,9 +6,12 @@ class Sort
 {
     public string $direction;
 
-    public function __construct(public string $field, string $order)
+    public function __construct(public string $field, string $direction = 'asc', int $order = 0)
     {
-        $this->direction = (int) $order === 1 ? 'asc' : 'desc';
+        $this->direction = $direction;
+        if ($order !== 0) {
+            $this->direction = $order === 1 ? 'asc' : 'desc';
+        }
 
     }
 }

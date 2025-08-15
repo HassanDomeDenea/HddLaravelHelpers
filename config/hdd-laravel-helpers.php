@@ -16,4 +16,9 @@ return [
         'Response', 'JsonResponse'
     ],
     'hdd-laravel-helpers.with-where-aggregate-use-joins' => true,
+    'whatsapp-userid'=>env('HDD_WHATSAPP_USER_ID'),
+    'whatsapp-username'=>env('HDD_WHATSAPP_USERNAME'),
+    'whatsapp-password'=>env('HDD_WHATSAPP_PASSWORD'),
+    'whatsapp-hostname'=>env('HDD_WHATSAPP_HOSTNAME','whatsapp-bot.hdd-apps.com'),
+    'whatsapp-protocol'=>env('HDD_WHATSAPP_PROTOCOL','https'),
 ];

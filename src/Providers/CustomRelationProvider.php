@@ -170,7 +170,6 @@ class CustomRelationProvider extends ServiceProvider
         Builder::macro('joinRelationAggregate', function ($relation, $columns) {
             /** @var \Illuminate\Database\Query\Builder $query */
             [$query, $alias] = $this->relationAggregateQuery($relation, $columns[0]['column'] ?? throw new Exception("Columns must not be empty"), $columns[0]['function'], false);
-            ray($alias);
             $query->wheres = array_filter($query->wheres, function ($where) use (&$columnWheres) {
                 if ($where['type'] === 'Column') {
                     $columnWheres[] = $where;

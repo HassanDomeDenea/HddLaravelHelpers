@@ -826,7 +826,6 @@ class DataTable
      */
     public function proceed(): ResponseData
     {
-//        ray()->showQueries();
         if (!$this->payload) {
             $this->setPayload();
         }

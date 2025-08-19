@@ -16,5 +16,8 @@ Route::prefix('api')->group(function () {
     Route::patch('medias/{media}/update-description', [MediaController::class, 'updateDescription'])->name('media.update-date')
         ->middleware('auth:sanctum');
 
+    Route::patch('medias/{media}/manipulate', [MediaController::class, 'manipulate'])->name('media.manipulate')
+        ->middleware('auth:sanctum');
+
 
 });

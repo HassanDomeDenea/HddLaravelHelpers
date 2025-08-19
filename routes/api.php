@@ -19,5 +19,8 @@ Route::prefix('api')->group(function () {
     Route::patch('medias/{media}/manipulate', [MediaController::class, 'manipulate'])->name('media.manipulate')
         ->middleware('auth:sanctum');
 
+    Route::delete('medias/{media}', [MediaController::class, 'destroy'])->name('media.destroy')
+        ->middleware('auth:sanctum');
+
 
 });

@@ -68,7 +68,7 @@ class MediaController
     }
 
     /**
-     * Used to update the description in custom_properties of media model
+     * Used to manipulate (rotation for example) of media model
      *
      * @param int|string $media
      * @param Request $request
@@ -95,5 +95,19 @@ class MediaController
             return ApiResponse::failedResponse($exception->getMessage());
         }
         return ApiResponse::successResponse(MediaData::from($media));
+    }
+
+    /**
+     * Used to destroy the media
+     *
+     * @param int|string $media
+     * @return ApiResponse
+     */
+    public function destroy(int|string $media): ApiResponse
+    {
+        /** @var Media $media */
+        $media = config('media-library.media_model')::findOrFail($media);
+        $media->delete();
+        return ApiResponse::successResponse();
     }
 }

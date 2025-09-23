@@ -1,11 +1,16 @@
 <?php
+declare(strict_types=1);
 
 namespace HassanDomeDenea\HddLaravelHelpers;
 
 use Gate;
+use HassanDomeDenea\HddLaravelHelpers\Data\AuditData;
+use HassanDomeDenea\HddLaravelHelpers\Data\AuditUserData;
 use HassanDomeDenea\HddLaravelHelpers\Data\Requests\ListModelRequestData;
 use HassanDomeDenea\HddLaravelHelpers\Data\Requests\ReorderRequestData;
 use HassanDomeDenea\HddLaravelHelpers\Helpers\ApiResponse;
+use HassanDomeDenea\HddLaravelHelpers\Helpers\AuditableUtilities;
+use HassanDomeDenea\HddLaravelHelpers\Helpers\CrudeHelpers;
 use HassanDomeDenea\HddLaravelHelpers\Helpers\PathHelpers;
 use HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend\DataTable;
 use HassanDomeDenea\HddLaravelHelpers\Requests\DestroyManyRequest;
@@ -13,19 +18,20 @@ use HassanDomeDenea\HddLaravelHelpers\Requests\InfiniteScrollRequest;
 use HassanDomeDenea\HddLaravelHelpers\Requests\StoreManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Requests\UpdateManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Services\InfiniteScrollSearcherService;
+use Illuminate\Contracts\Container\BindingResolutionException;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Bus\DispatchesJobs;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Foundation\Validation\ValidatesRequests;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Fluent;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use ReflectionClass;
+use OwenIt\Auditing\Models\Audit;
 use Spatie\LaravelData\Data;
-use Spatie\LaravelData\Support\Validation\ValidationContext;
-use Spatie\LaravelData\Support\Validation\ValidationPath;
 use Spatie\QueryBuilder\QueryBuilder;
 use Throwable;
 
@@ -42,6 +48,7 @@ class BaseCrudController extends Controller
      */
     public string|null $modelClass = null;
     public string|null $policyClass = null;
+    protected array $allowedIncludes = [];
 
     public ?string $dataClass = null;
 
@@ -73,12 +80,18 @@ class BaseCrudController extends Controller
     {
         return $this->modelClass ?? 'App\Models\\' . str(static::class)->afterLast('\\')->before('Controller');
     }
+
     /**
      * @return QueryBuilder<TModelClass>
      */
     protected function getQueryBuilder(): QueryBuilder
     {
-        return QueryBuilder::for($this->getModalClass());
+        return tap(QueryBuilder::for($this->getModalClass()),
+            function (QueryBuilder $queryBuilder) {
+                if (filled($this->allowedIncludes)) {
+                    $queryBuilder->allowedIncludes($this->allowedIncludes);
+                }
+            });
     }
 
     protected function getDefaultOrderColumn(): string|null
@@ -114,8 +127,28 @@ class BaseCrudController extends Controller
      */
     public function getStoreDataClass(): string|null
     {
-        if ($this->dataClass && class_exists($this->dataClass)) {
-            return $this->dataClass;
+        if ($dataClass = PathHelpers::getDataClassFromModelClass($this->getModalClass(), 'Store')) {
+            return $dataClass;
+        } else {
+            return $this->getDataClass();
+        }
+    }
+
+    /**
+     * @return class-string<FormRequest>| null
+     */
+    public function getStoreFormRequestClass(): string|null
+    {
+        return $this->storeFormRequestClass;
+    }
+
+    /**
+     * @return class-string<Data>| null
+     */
+    public function getUpdateDataClass(): string|null
+    {
+        if ($dataClass = PathHelpers::getDataClassFromModelClass($this->getModalClass(), 'Update')) {
+            return $dataClass;
         } else if ($dataClass = PathHelpers::getDataClassFromModelClass($this->getModalClass(), 'Store')) {
             return $dataClass;
         } else {
@@ -124,17 +157,11 @@ class BaseCrudController extends Controller
     }
 
     /**
-     * @return class-string<Data>| null
+     * @return class-string<FormRequest>| null
      */
-    public function getUpdateDataClass(): string|null
+    public function getUpdateFormRequestClass(): string|null
     {
-        if ($this->dataClass && class_exists($this->dataClass)) {
-            return $this->dataClass;
-        } else if ($dataClass = PathHelpers::getDataClassFromModelClass($this->getModalClass(), 'Update')) {
-            return $dataClass;
-        } else {
-            return $this->getDataClass();
-        }
+        return $this->updateFormRequestClass;
     }
 
     /**
@@ -165,7 +192,7 @@ class BaseCrudController extends Controller
         }
     }
 
-    public function list()
+    public function list(): ApiResponse
     {
         if ($this->getPolicyClass()) {
             Gate::authorize('viewAny', $this->getModalClass());
@@ -195,6 +222,7 @@ class BaseCrudController extends Controller
             Gate::authorize('viewAny', $this->getModalClass());
         }
         $dt->setModel($this->getModalClass());
+        $dt->setModel($this->getQueryBuilder());
         $dt->setDataClass($this->getDataClass());
 
         return ApiResponse::successResponse($dt->proceed());
@@ -202,7 +230,7 @@ class BaseCrudController extends Controller
 
     public function show($modelId): JsonResponse
     {
-        $modelInstance = $this->getModalClass()::findOrFail($modelId);
+        $modelInstance = $this->getQueryBuilder()->findOrFail($modelId);
         if ($this->getPolicyClass()) {
             Gate::authorize('view', $modelInstance);
         }
@@ -210,43 +238,21 @@ class BaseCrudController extends Controller
         return ApiResponse::successResponse($dataClass ? $dataClass::from($modelInstance) : $modelInstance);
     }
 
+
     /**
-     * @throws \ReflectionException
+     * @throws BindingResolutionException
      */
     public function store(): JsonResponse
     {
         if ($this->getPolicyClass()) {
             Gate::authorize('create', $this->getModalClass());
         }
-        if ($this->storeFormRequestClass) {
-            /** @var FormRequest $request */
-            $request = app($this->storeFormRequestClass);
-            if (method_exists($request, 'authorize')) {
-                abort_unless($request->authorize(), 403);
-            }
-            $attributes = $request->validated();
-        } elseif ($dataClass = $this->getStoreDataClass()) {
-            if (method_exists($dataClass, 'authorize')) {
-                $validationContext = new ValidationContext(
-                    $payload = request()->all(),
-                    $payload,
-                    new ValidationPath()
-                );
-                abort_unless((bool) app()->call([$dataClass,'authorize'], ['context' => $validationContext]),403);
-            }
-            $attributes = $dataClass::validate(request()->all());
-        } else {
-            $attributes = request()->all();
-        }
-        if ($createActionClass = $this->getCreateActionClass()) {
-            //TODO: Cache Reflection Result
-            $expectedAttributesType = (new ReflectionClass($createActionClass))->getMethod('handle')->getParameters()[0]->getType()->getName() ?? null;
-            if (!empty($dataClass) && ($expectedAttributesType) === $dataClass) {
-                $attributes = $dataClass::from($attributes);
-            } else if ($expectedAttributesType === Fluent::class) {
-                $attributes = new Fluent($attributes);
-            }
-            $modelInstance = app($createActionClass)->handle($attributes);
+        $actionClassName = $this->getCreateActionClass();
+        $actionClassAttributeType = PathHelpers::getActionClassAttributeType($actionClassName);
+
+        $attributes = CrudeHelpers::getAttributesFromAnything($this->getStoreFormRequestClass(), $this->getStoreDataClass(), request()->all(), $actionClassAttributeType);
+        if ($actionClassName) {
+            $modelInstance = app()->make($actionClassName)->handle($attributes);
         } else {
             $modelInstance = $this->getModalClass()::create($attributes);
         }
@@ -260,11 +266,37 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('create', $this->getModalClass());
         }
-        $ids = $this->getModalClass()::checkAndCreateMany($this->storeFormRequestClass ?: $this->getStoreDataClass(), $request);
+        $ids = [];
 
-        return ApiResponse::successResponse($ids);
+        try {
+            DB::transaction(function () use ($request, &$ids) {
+                $dataList = $request->array('data');
+
+                $actionClassName = $this->getCreateActionClass();
+                $actionClassAttributeType = PathHelpers::getActionClassAttributeType($actionClassName);
+                $primaryKeyName = $this->getModalClass()::getTablePrimaryKey() ?: 'id';
+                foreach ($dataList as $itemData) {
+                    $attributes = CrudeHelpers::getAttributesFromAnything($this->getStoreFormRequestClass(), $this->getStoreDataClass(), $itemData, $actionClassAttributeType);
+                    if ($actionClassName) {
+                        $modelInstance = app()->make($actionClassName)->handle($attributes);
+                    } else {
+                        $modelInstance = $this->getModalClass()::create($attributes);
+                    }
+
+                    if ($modelInstance) {
+                        $ids[] = $modelInstance[$primaryKeyName];
+                    }
+                }
+            });
+        } catch (Throwable $throwable) {
+            return ApiResponse::failedResponse($throwable->getMessage());
+        }
+        return ApiResponse::successResponse($ids,201);
     }
 
+    /**
+     * @throws BindingResolutionException
+     */
     public function update(): JsonResponse
     {
         $modelClass = $this->getModalClass();
@@ -276,38 +308,12 @@ class BaseCrudController extends Controller
             Gate::authorize('update', $modelInstance);
         }
         request()->route()->setParameter($modelInstanceName, $modelInstance);
-        if ($this->updateFormRequestClass) {
-            /** @var FormRequest $request */
-            $request = app($this->updateFormRequestClass);
 
-            if (method_exists($request, 'authorize')) {
-                abort_unless($request->authorize(), 403);
-            }
-            $attributes = $request->validated();
-        } elseif ($dataClass = $this->getUpdateDataClass()) {
-            if (method_exists($dataClass, 'authorize')) {
-                $validationContext = new ValidationContext(
-                    $payload = request()->all(),
-                    $payload,
-                    new ValidationPath()
-                );
-                app()->call([$dataClass, 'authorize'], ['context' => $validationContext, $modelInstanceName => $modelInstance]);
-            }
-            $attributes = $dataClass::validate(request()->all());
-        } else {
-            $attributes = request()->all();
-        }
-        if ($updateActionClass = $this->getUpdateActionClass()) {
-
-            //TODO: Cache Reflection Result
-            $expectedAttributesType = (new ReflectionClass($updateActionClass))->getMethod('handle')->getParameters()[1]->getType()->getName() ?? null;
-            if (!empty($dataClass) && ($expectedAttributesType) === $dataClass) {
-                $attributes = $dataClass::from($attributes);
-            } else if ($expectedAttributesType === Fluent::class) {
-                $attributes = new Fluent($attributes);
-            }
-
-            app($updateActionClass)->handle($modelInstance, $attributes);
+        $actionClassName = $this->getUpdateActionClass();
+        $actionClassAttributeType = PathHelpers::getActionClassAttributeType($actionClassName, 1);
+        $attributes = CrudeHelpers::getAttributesFromAnything($this->getUpdateFormRequestClass(), $this->getUpdateDataClass(), request()->all(), $actionClassAttributeType);
+        if ($actionClassName) {
+            $modelInstance = app()->make($actionClassName)->handle($modelInstance, $attributes);
         } else {
             $modelInstance->update($attributes);
         }
@@ -321,7 +327,35 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('updateMany', $request->array('data.*.ids'));
         }
-        $ids = $this->getModalClass()::checkAndUpdateMany($this->updateFormRequestClass ?: $this->getUpdateDataClass(), $request);
+        $ids = [];
+        try {
+            DB::transaction(function () use ($request, &$ids) {
+                $dataList = $request->array('data');
+
+                $actionClassName = $this->getUpdateActionClass();
+                $actionClassAttributeType = PathHelpers::getActionClassAttributeType($actionClassName, 1);
+
+                $modelBindingName = Str::snake(class_basename($this->getModalClass()));
+                $primaryKeyName = $this->getModalClass()::getTablePrimaryKey() ?: 'id';
+                $modelsList = $this->getModalClass()::query()->findMany(Arr::pluck($dataList, $primaryKeyName));
+                foreach ($dataList as $itemId => $itemData) {
+                    $id = $itemData[$primaryKeyName] ?? $itemId;
+                    $modelInstance = $modelsList->where($primaryKeyName, $id)->firstOrFail();
+                    $attributes = CrudeHelpers::getAttributesFromAnything($this->getUpdateFormRequestClass(), $this->getUpdateDataClass(), $itemData, $actionClassAttributeType, formRequestExtraBindings: [$modelBindingName => $modelInstance]);
+                    if ($actionClassName) {
+                        $modelInstance = app()->make($actionClassName)->handle($modelInstance, $attributes);
+                    } else {
+                        $modelInstance->update($attributes);
+                    }
+
+                    if ($modelInstance) {
+                        $ids[] = $modelInstance[$primaryKeyName];
+                    }
+                }
+            });
+        } catch (Throwable $throwable) {
+            return ApiResponse::failedResponse($throwable->getMessage());
+        }
 
         return ApiResponse::successResponse($ids);
     }
@@ -363,12 +397,13 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('reorder', $this->getModalClass());
         }
-
+        $success = false;
         try {
-            $success = $this->getModalClass()::reorderSequence($requestData->from_order, $requestData->to_order, $requestData->scopedValues);
+            if (method_exists($this->getModalClass(), 'reorderSequence')) {
+                $success = $this->getModalClass()::reorderSequence($requestData->from_order, $requestData->to_order, $requestData->scopedValues);
+            }
         } catch (Throwable $e) {
-            Log::error($e->getMessage());
-            $success = false;
+            ApiResponse::failedResponse($e->getMessage());
         }
 
         if (!$success) {
@@ -376,5 +411,24 @@ class BaseCrudController extends Controller
         }
 
         return ApiResponse::successResponse();
+    }
+
+    public function audits(string|int $id, Request $request): ApiResponse
+    {
+        $request->validate([
+            'field' => ['required', 'string'],
+            'with_all_values' => ['boolean'],
+        ]);
+
+        /** @var BaseModel $modelInstance */
+        $modelInstance = $this->getModalClass()::findOrFail($id);
+
+        return ApiResponse::successResponse(
+            AuditableUtilities::FormatAuditQuery(
+                $modelInstance->audits(),
+                $request->input('field'),
+                $request->boolean('with_all_values'),
+            )
+        );
     }
 }

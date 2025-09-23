@@ -10,6 +10,7 @@ use HassanDomeDenea\HddLaravelHelpers\Providers\CustomRelationProvider;
 use HassanDomeDenea\HddLaravelHelpers\Providers\YamlTranslationServiceProvider;
 use Illuminate\Routing\ResponseFactory;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Spatie\LaravelPackageTools\Exceptions\InvalidPackage;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -25,10 +26,14 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
         app()->register(CustomRelationProvider::class);
 
 
-
         Route::macro('apiResourceMany', function (string $name, string $controller, ?array $only = null) {
             if ($only === null) {
-                $only = ['search', 'storeMany', 'updateMany', 'destroyMany', 'reorder','list'];
+                $only = ['search', 'storeMany', 'updateMany', 'destroyMany', 'reorder', 'list', 'audits'];
+            }
+
+            if (in_array('audits', $only)) {
+
+                Route::get($name . "/{".Str::singular($name)."}/audits", [$controller, 'audits'])->name($name . '.audits');
             }
             if (in_array('list', $only)) {
                 Route::get($name . '/list', [$controller, 'list'])->name($name . '.list');
@@ -48,6 +53,7 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
             if (in_array('destroyMany', $only)) {
                 Route::delete($name, [$controller, 'destroyMany'])->name($name . '.destroy-many');
             }
+
 
             return Route::apiResource($name, $controller);
         });
@@ -98,7 +104,7 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
         $package
             ->name('HddLaravelHelpers')
             ->hasConfigFile('hdd-laravel-helpers')
-            ->hasRoutes('api','web')
+            ->hasRoutes('api', 'web')
 //            ->hasViews()
 //            ->hasMigration('create_hddlaravelhelpers_table')
             ->hasCommands(

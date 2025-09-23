@@ -2,8 +2,13 @@
 
 namespace HassanDomeDenea\HddLaravelHelpers\Helpers;
 
+use Carbon\Carbon;
+use Carbon\CarbonInterval;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
+use ReflectionClass;
 use Spatie\LaravelData\Data;
+use Throwable;
 
 class PathHelpers
 {
@@ -23,56 +28,85 @@ class PathHelpers
 
     /**
      * @param class-string<Model> $modelClassName
-     * @return class-string<Data>
+     * @return class-string<Data>|false
      */
     public static function getDataClassFromModelClass(string $modelClassName, string $prefix = ''): string|false
     {
-        $expectedClass = str($modelClassName)->replace('\Models\\', '\Data\\')
-            ->replace(class_basename($modelClassName), $prefix . class_basename($modelClassName));
 
-        $expectedClassWithData = $expectedClass->append('Data');
-        if (class_exists($expectedClassWithData)) {
-            return $expectedClassWithData;
-        }
-        if (class_exists($expectedClass))
-            return $expectedClass;
+        return Cache::remember('HDD-' . $modelClassName . 'DataClass' . $prefix, app()->isProduction() ? CarbonInterval::day() : 1, function () use ($modelClassName, $prefix) {
+            $isolateInSubFolders = config()->boolean('hdd-laravel-helpers.data-classes.isolate-in-subfolders', true);
+            $baseModelClassName = class_basename($modelClassName);
 
-        return false;
+            $expectedClass = str($modelClassName)->replace('\Models\\', '\Data\\' . ($isolateInSubFolders ? $baseModelClassName . '\\' : ''))
+                ->when(filled($prefix), fn($str) => $str->replaceLast($baseModelClassName, $prefix . $baseModelClassName));
+            $expectedClassWithData = $expectedClass->append('Data');
+
+            if (class_exists($expectedClassWithData)) {
+                return $expectedClassWithData;
+            }
+            if (class_exists($expectedClass))
+                return $expectedClass;
+
+            return false;
+        });
     }
 
     /**
      * @param class-string<Model> $modelClassName
-     * @return class-string<Data>
+     * @return class-string<Data>|false
      */
     public static function getCreateActionClassFromModelClass(string $modelClassName): string|false
     {
-        $expectedClass = str($modelClassName)->replace('\Models\\', '\Actions\\Create');
+        return Cache::remember('HDD-' . $modelClassName . 'CreateActionClass', app()->isProduction() ? CarbonInterval::day() : 1, function () use ($modelClassName) {
+            $isolateInSubFolders = config('hdd-laravel-helpers.data-classes.isolate-in-subfolders', true);
+            $baseModelClassName = class_basename($modelClassName);
 
-        $expectedClassWithAction = $expectedClass->append('Action');
-        if (class_exists($expectedClassWithAction)) {
-            return $expectedClassWithAction;
-        }
-        if (class_exists($expectedClass))
-            return $expectedClass;
+            $expectedClass = str($modelClassName)->replace('\Models\\', '\Actions\\' . ($isolateInSubFolders ? "$baseModelClassName\\" : '') . 'Create');
+            $expectedClassWithAction = $expectedClass->append('Action');
+            if (class_exists($expectedClassWithAction)) {
+                return $expectedClassWithAction;
+            }
+            if (class_exists($expectedClass))
+                return $expectedClass;
 
-        return false;
+            return false;
+        });
     }
 
     /**
      * @param class-string<Model> $modelClassName
-     * @return class-string<Data>
+     * @return class-string<Data>|false
      */
     public static function getUpdateActionClassFromModelClass(string $modelClassName): string|false
     {
-        $expectedClass = str($modelClassName)->replace('\Models\\', '\Actions\\Update');
+        return Cache::remember('HDD-' . $modelClassName . 'UpdateActionClass', app()->isProduction() ? CarbonInterval::day() : 1, function () use ($modelClassName) {
 
-        $expectedClassWithAction = $expectedClass->append('Action');
-        if (class_exists($expectedClassWithAction)) {
-            return $expectedClassWithAction;
+            $isolateInSubFolders = config('hdd-laravel-helpers.data-classes.isolate-in-subfolders', true);
+            $baseModelClassName = class_basename($modelClassName);
+
+            $expectedClass = str($modelClassName)->replace('\Models\\', '\Actions\\' . ($isolateInSubFolders ? "$baseModelClassName\\" : '') . 'Update');
+
+            $expectedClassWithAction = $expectedClass->append('Action');
+            if (class_exists($expectedClassWithAction)) {
+                return $expectedClassWithAction;
+            }
+            if (class_exists($expectedClass))
+                return $expectedClass;
+
+            return false;
+        });
+    }
+
+    public static function getActionClassAttributeType(?string $actionClassName, int $parameterIndex = 0): ?string
+    {
+        if (empty($actionClassName)) {
+            return null;
         }
-        if (class_exists($expectedClass))
-            return $expectedClass;
-
-        return false;
+        try {
+            return (new ReflectionClass($actionClassName))
+                ->getMethod('handle')->getParameters()[$parameterIndex]->getType()->getName() ?? null;
+        } catch (Throwable) {
+            return null;
+        }
     }
 }

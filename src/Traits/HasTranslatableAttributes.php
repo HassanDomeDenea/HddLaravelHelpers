@@ -2,6 +2,8 @@
 
 namespace HassanDomeDenea\HddLaravelHelpers\Traits;
 
+use Cache;
+use Carbon\CarbonInterval;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use ReflectionClass;
@@ -16,14 +18,23 @@ trait HasTranslatableAttributes
 
     public static function getAttributeNames(): Collection
     {
-        $reflection = new ReflectionClass(static::class);
-        return collect($reflection->getProperties(ReflectionProperty::IS_PUBLIC))->map(fn($property) => $property->getName());
+        return Cache::remember('HDD-' . static::class . '_DataClassAttributeNames', app()->isProduction() ? CarbonInterval::day() : 1, function () {
+            $reflection = new ReflectionClass(static::class);
+            return collect($reflection->getProperties(ReflectionProperty::IS_PUBLIC))->map(fn($property) => $property->getName());
+        });
+    }
+
+    public static function getPayloadAttributeNames(): array
+    {
+        return Cache::remember('HDD-' . static::class . '_PayloadDataClassAttributeNames', app()->isProduction() ? CarbonInterval::day() : 1, function () {
+            return static::getAttributeNames()->when(static::$isSnakeCase, fn(Collection $collection) => $collection->map(fn($propertyName) => Str::snake($propertyName)))->toArray();
+        });
     }
 
     public static function getTranslatableAttributes(): array
     {
         return static::getAttributeNames()
-            ->when(static::$isSnakeCase, fn(Collection $collection) => $collection->map(fn($propertyName)=> Str::snake($propertyName)))
+            ->when(static::$isSnakeCase, fn(Collection $collection) => $collection->map(fn($propertyName) => Str::snake($propertyName)))
             ->mapWithKeys(fn($propertyName) => [$propertyName => __(str($propertyName)->headline()->toString())])
             ->toArray();
     }

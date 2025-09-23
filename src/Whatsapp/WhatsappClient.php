@@ -36,7 +36,7 @@ class WhatsappClient
 
         $uri = $this->baseUri();
         try {
-            $response = Http::get($uri->withPath($uri->path() . '/check-number')->withQuery(['phone' => $phone, 'with_contact' => 1]) . '/check-number');
+            $response = Http::get($uri->withPath($uri->path() . '/check-number')->withQuery(['phone' => $phone, 'with_contact' => 1]));
             if ($response->successful()) {
                 $json = fluent($response->json());
                 return new WhatsappApiCheckNumberResponse($json->boolean('exists'), $json->string('name', $phone));
@@ -47,4 +47,5 @@ class WhatsappClient
             return new WhatsappFailedResponse(__($throwable->getMessage()));
         }
     }
+
 }

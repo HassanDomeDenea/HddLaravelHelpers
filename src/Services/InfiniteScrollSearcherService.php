@@ -2,6 +2,7 @@
 
 namespace HassanDomeDenea\HddLaravelHelpers\Services;
 
+use DB;
 use HassanDomeDenea\HddLaravelHelpers\Data\InfiniteScrollResponseData;
 use HassanDomeDenea\HddLaravelHelpers\Helpers\ApiResponse;
 use HassanDomeDenea\HddLaravelHelpers\Helpers\SearchArabicNamesUsingRegexp;
@@ -140,7 +141,13 @@ class InfiniteScrollSearcherService
                 });
 
             }
-            $total = $this->modelQuery->count();
+            ray($this->modelQuery->getGroupBy());
+            if(empty($this->modelQuery->getGroupBy())){
+                $total = $this->modelQuery->count();
+            }else{
+                ray($this->modelQuery->toRawSql());
+                $total = DB::table(DB::raw("({$this->modelQuery->toRawSql()}) as sub"))->count();
+            }
             $items = $this->modelQuery
                 ->offset($this->offset)
                 ->limit($this->_limit)

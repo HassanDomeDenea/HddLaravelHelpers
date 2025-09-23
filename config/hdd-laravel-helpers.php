@@ -21,4 +21,10 @@ return [
     'whatsapp-password'=>env('HDD_WHATSAPP_PASSWORD'),
     'whatsapp-hostname'=>env('HDD_WHATSAPP_HOSTNAME','whatsapp-bot.hdd-apps.com'),
     'whatsapp-protocol'=>env('HDD_WHATSAPP_PROTOCOL','https'),
+    'data-classes'=>[
+        'isolate-in-subfolders'=>env("HDD_DATA_CLASSES_ISOLATE_IN_SUBFOLDERS",true),
+    ],
+    'action-classes'=>[
+        'isolate-in-subfolders'=>env("HDD_ACTION_CLASSES_ISOLATE_IN_SUBFOLDERS",true),
+    ]
 ];

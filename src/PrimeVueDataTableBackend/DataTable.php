@@ -55,9 +55,9 @@ class DataTable
     private ?Payload $payload = null;
 
     /**
-     * @var Builder<TModel>|Relation|null
+     * @var Builder<TModel>|\Spatie\QueryBuilder\QueryBuilder<TModel>|Relation|null
      */
-    private Builder|Relation|null $query = null;
+    private Builder|Relation|null|\Spatie\QueryBuilder\QueryBuilder $query = null;
 
     protected array $joins = [];
     protected array $joinsMorphableTo = [];
@@ -112,13 +112,13 @@ class DataTable
     }
 
     /**
-     * @param class-string<TModel>|Builder<TModel> $modelName
+     * @param class-string<TModel>|Builder<TModel>|\Spatie\QueryBuilder\QueryBuilder<TModel> $modelName
      * @param class-string<Data> $dataClassName
      * @return $this
      *
      * @noinspection PhpDocSignatureInspection
      */
-    public function setModel(string|Builder|Relation $modelName, ?string $dataClassName = null): self
+    public function setModel(string|Builder|\Spatie\QueryBuilder\QueryBuilder|Relation $modelName, ?string $dataClassName = null): self
     {
         if (is_string($modelName)) {
             /** @var Builder<TModel> $query */
@@ -155,14 +155,14 @@ class DataTable
                 }
                 $this->joins[] = $name;
                 if ($morphableTo) {
-                    $this->joinsMorphableTo[$name] = $morphableTo;
+                    $this->joinsMorphableTo[$name] = Relation::getMorphedModel($morphableTo) ?: Relation::getMorphAlias($morphableTo);
                 }
             }
         } else {
             if (!Arr::has($this->joins, $relationName)) {
                 $this->joins[] = $relationName;
                 if ($morphableTo) {
-                    $this->joinsMorphableTo[$relationName] = $morphableTo;
+                    $this->joinsMorphableTo[$relationName] = Relation::getMorphedModel($morphableTo) ?: Relation::getMorphAlias($morphableTo);
                 }
             }
         }
@@ -210,7 +210,7 @@ class DataTable
     /**
      * @param Builder<TModel> $query
      */
-    private function processJoinsAndRelations(Builder|Relation $query): void
+    private function processJoinsAndRelations(Builder|\Spatie\QueryBuilder\QueryBuilder|Relation $query): void
     {
         foreach (array_unique($this->joins) as $join) {
             $joinName = $join;
@@ -258,7 +258,7 @@ class DataTable
     }
 
     /**
-     * @return Builder<TModel>|Relation
+     * @return Builder<TModel>|\Spatie\QueryBuilder\QueryBuilder|Relation
      */
     public function getQuery(): Builder|Relation
     {
@@ -309,7 +309,7 @@ class DataTable
         return $columnName;
     }
 
-    private function addFilterToField(string $columnName, mixed $value = null, FilterMatchMode $matchMode = FilterMatchMode::contains, Builder|Relation|null $query = null, string $boolean = 'and', $skipCheckingRelations = false): void
+    private function addFilterToField(string $columnName, mixed $value = null, FilterMatchMode $matchMode = FilterMatchMode::contains, Builder|Relation|\Spatie\QueryBuilder\QueryBuilder|null $query = null, string $boolean = 'and', $skipCheckingRelations = false): void
     {
         $isRelationCountField = false;
         $relationManyField = false;
@@ -716,12 +716,13 @@ class DataTable
             if ($filter->isEmpty()) {
                 continue;
             }
+
             $this->processNonGlobalFilterField($filter);
         }
 
     }
 
-    private function processGroupedFilters(Builder|Relation $builder, ?GroupedFilter $groupedFilter, $operator = null): bool
+    private function processGroupedFilters(Builder|\Spatie\QueryBuilder\QueryBuilder|Relation $builder, ?GroupedFilter $groupedFilter, $operator = null): bool
     {
 
         $isEmpty = true;

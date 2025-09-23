@@ -7,8 +7,6 @@ use Exception;
 use HassanDomeDenea\HddLaravelHelpers\Data\MediaData;
 use HassanDomeDenea\HddLaravelHelpers\Helpers\ApiResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Routing\Controller;
 use Illuminate\Validation\Rule;
 use Spatie\Image\Enums\Orientation;
 use Spatie\Image\Image;
@@ -91,7 +89,7 @@ class MediaController
             } else {
                 throw new Exception('Orientation not supported');
             }
-        } catch (\Exception $exception) {
+        } catch (Exception $exception) {
             return ApiResponse::failedResponse($exception->getMessage());
         }
         return ApiResponse::successResponse(MediaData::from($media));

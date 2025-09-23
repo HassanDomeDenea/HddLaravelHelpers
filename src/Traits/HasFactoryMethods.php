@@ -4,8 +4,13 @@ namespace HassanDomeDenea\HddLaravelHelpers\Traits;
 
 trait HasFactoryMethods
 {
-    public static function fakeRandomOrNew()
+    public static function fakeRandomOrNew(int $chanceOfTryingExistingModel = 50)
     {
-        return static::inRandomOrder()->first()?->id ?: static::factory();
+        $tryExistingModel = fake()->boolean($chanceOfTryingExistingModel);
+        if ($tryExistingModel) {
+            return static::inRandomOrder()->first()?->id ?: static::factory();
+        } else {
+            return static::factory();
+        }
     }
 }

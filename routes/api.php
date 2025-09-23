@@ -1,5 +1,6 @@
 <?php
 
+use HassanDomeDenea\HddLaravelHelpers\Controllers\AuditController;
 use HassanDomeDenea\HddLaravelHelpers\Controllers\BatchRequestController;
 use HassanDomeDenea\HddLaravelHelpers\Controllers\MediaController;
 use Illuminate\Support\Facades\Route;
@@ -20,6 +21,12 @@ Route::prefix('api')->group(function () {
         ->middleware('auth:sanctum');
 
     Route::delete('medias/{media}', [MediaController::class, 'destroy'])->name('media.destroy')
+        ->middleware('auth:sanctum');
+
+    Route::delete('medias/{media}', [MediaController::class, 'destroy'])->name('media.destroy')
+        ->middleware('auth:sanctum');
+
+    Route::get('audits', [AuditController::class, 'index'])->name('audits.index')
         ->middleware('auth:sanctum');
 
 

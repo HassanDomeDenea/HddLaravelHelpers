@@ -59,6 +59,8 @@ class DataTable
      */
     private Builder|Relation|null|\Spatie\QueryBuilder\QueryBuilder $query = null;
 
+    private Builder|Relation|null|\Spatie\QueryBuilder\QueryBuilder $countQuery = null;
+
     protected array $joins = [];
     protected array $joinsMorphableTo = [];
 
@@ -225,6 +227,7 @@ class DataTable
                 $query->leftJoinRelationship(Str::camel($joinName), fn(PowerJoinClause $join) => $join->as($joinName), morphable: $this->joinsMorphableTo[$join] ?? null);
             }
         }
+
         if (!empty($this->relations)) {
             $query->with(array_unique(array_map(fn($i)=>Str::camel($i),$this->relations)));
         }
@@ -260,9 +263,17 @@ class DataTable
     /**
      * @return Builder<TModel>|\Spatie\QueryBuilder\QueryBuilder|Relation
      */
-    public function getQuery(): Builder|Relation
+    public function getQuery(): Builder|Relation|\Spatie\QueryBuilder\QueryBuilder
     {
         return $this->query->clone();
+    }
+
+    /**
+     * @return Builder<TModel>|\Spatie\QueryBuilder\QueryBuilder|Relation
+     */
+    public function getCountQuery(): Builder|Relation|\Spatie\QueryBuilder\QueryBuilder
+    {
+        return $this->countQuery->clone();
     }
 
     public function checkNestedColumnName(string $column, Field|null $field = null): void
@@ -304,7 +315,8 @@ class DataTable
             $columnName = Str::replace('.', '->', $field->filterField);
         } elseif (substr_count($columnName, '.') > 1) {
             $relationName = Str::afterLast(Str::beforeLast($columnName, '.'), '.');
-            $columnName = $relationName . Str::after($columnName, $relationName);
+            $columnName =
+                $relationName . "." . Str::after($columnName, $relationName . ".");
         }
         return $columnName;
     }
@@ -319,6 +331,7 @@ class DataTable
         /** @var Builder $targetQuery */
         $targetQuery = $query ?: $this->query;
 
+
         if (!$skipCheckingRelations) {
             $this->checkNestedColumnName($columnName);
             $this->modifyColumnName($columnName, 'filterField');
@@ -331,6 +344,8 @@ class DataTable
                 $relationManyField = Str::beforeLast($columnName, '.');
             }
         }
+
+
 
 
         if ($relationManyField) {
@@ -830,6 +845,7 @@ class DataTable
         if (!$this->payload) {
             $this->setPayload();
         }
+        ray()->clearScreen();
         $payload = $this->payload;
         $this->processFixedFilters();
         $this->processGroupedFilters($this->query, $this->payload->fixedGroupedFilters, 'and');
@@ -852,6 +868,7 @@ class DataTable
             $countColumn = DB::raw($this->mainTableName . '.id');
         }
         $totalWithoutFilters = $countQuery->count($countColumn);
+        $this->countQuery = $countQuery;
         $joinHelper = JoinsHelper::make($this->query->getModel());
         $joinHelper->clear();
         $this->processJoinsAndRelations($this->query);

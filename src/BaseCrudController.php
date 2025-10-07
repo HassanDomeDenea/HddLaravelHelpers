@@ -4,8 +4,6 @@ declare(strict_types=1);
 namespace HassanDomeDenea\HddLaravelHelpers;
 
 use Gate;
-use HassanDomeDenea\HddLaravelHelpers\Data\AuditData;
-use HassanDomeDenea\HddLaravelHelpers\Data\AuditUserData;
 use HassanDomeDenea\HddLaravelHelpers\Data\Requests\ListModelRequestData;
 use HassanDomeDenea\HddLaravelHelpers\Data\Requests\ReorderRequestData;
 use HassanDomeDenea\HddLaravelHelpers\Helpers\ApiResponse;
@@ -19,7 +17,6 @@ use HassanDomeDenea\HddLaravelHelpers\Requests\StoreManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Requests\UpdateManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Services\InfiniteScrollSearcherService;
 use Illuminate\Contracts\Container\BindingResolutionException;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Bus\DispatchesJobs;
 use Illuminate\Foundation\Http\FormRequest;
@@ -221,7 +218,7 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('viewAny', $this->getModalClass());
         }
-        $dt->setModel($this->getModalClass());
+        // $dt->setModel($this->getModalClass());
         $dt->setModel($this->getQueryBuilder());
         $dt->setDataClass($this->getDataClass());
 
@@ -234,6 +231,11 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('view', $modelInstance);
         }
+
+        if(($includes = request()->array('includes')) || ($includes = ($includeStr = request()->string('include')->toString()) ? explode(",",$includeStr) : [])){
+            $modelInstance->load(array_map(fn($include) => Str::camel($include), $includes));
+        }
+
         $dataClass = $this->getDataClass();
         return ApiResponse::successResponse($dataClass ? $dataClass::from($modelInstance) : $modelInstance);
     }

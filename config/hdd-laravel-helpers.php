@@ -26,5 +26,10 @@ return [
     ],
     'action-classes'=>[
         'isolate-in-subfolders'=>env("HDD_ACTION_CLASSES_ISOLATE_IN_SUBFOLDERS",true),
+    ],
+    'telegram'=>[
+        'bot_token'=>env('HDD_TELEGRAM_BOT_TOKEN'),
+        'backup_chat_id'=>env('HDD_TELEGRAM_BACKUP_CHAT_ID'),
+        'errors_chat_id'=>env('HDD_TELEGRAM_ERRORS_CHAT_ID'),
     ]
 ];

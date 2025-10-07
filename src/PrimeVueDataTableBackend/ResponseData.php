@@ -21,13 +21,13 @@ class ResponseData extends Data
          */
         #[LiteralTypeScriptType('TData[]')]
         public Collection|\Illuminate\Support\Collection $data,
-        public int                                       $current_page,
-        public int                                       $from,
-        public int                                       $to,
-        public int                                       $per_page,
-        public int                                       $last_page,
-        public int                                       $total,
-        public int                                       $total_without_filters,
+        public int                                       $current_page=0,
+        public int                                       $from=0,
+        public int                                       $to=0,
+        public int                                       $per_page=0,
+        public int                                       $last_page=0,
+        public int                                       $total=0,
+        public int                                       $total_without_filters=0,
         public array                                     $extra = []
     )
     {

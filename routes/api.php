@@ -29,8 +29,4 @@ Route::prefix('api')->group(function () {
     Route::get('audits', [AuditController::class, 'index'])->name('audits.index')
         ->middleware('auth:sanctum');
 
-
-    Broadcast::channel('App.Models', function ($user) {
-        return !blank($user);
-    });
 });

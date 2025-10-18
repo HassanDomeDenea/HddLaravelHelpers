@@ -44,7 +44,7 @@ class DateCompare implements ConditionExpression
         $operator = $localOperator;
         $mainColumn = match ($this->identify($grammar)) {
             'sqlite' => "strftime('%Y-%m-%d', $mainColumn)",
-            'mysql' => "DATE($mainColumn)",
+            'mysql','mariadb' => "DATE($mainColumn)",
             'pgsql' => "$mainColumn::date",
             default => $mainColumn
         };

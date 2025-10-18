@@ -30,4 +30,7 @@ Route::prefix('api')->group(function () {
         ->middleware('auth:sanctum');
 
 
+    Broadcast::channel('App.Models', function ($user) {
+        return !blank($user);
+    });
 });

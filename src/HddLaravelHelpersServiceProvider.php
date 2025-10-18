@@ -28,12 +28,14 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
 
         Route::macro('apiResourceMany', function (string $name, string $controller, ?array $only = null) {
             if ($only === null) {
-                $only = ['search', 'storeMany', 'updateMany', 'destroyMany', 'reorder', 'list', 'audits'];
+                $only = ['datatable', 'search', 'storeMany', 'updateMany', 'destroyMany', 'reorder', 'list', 'audits'];
             }
 
             if (in_array('audits', $only)) {
-
-                Route::get($name . "/{".Str::singular($name)."}/audits", [$controller, 'audits'])->name($name . '.audits');
+                Route::get($name . "/{" . Str::singular($name) . "}/audits", [$controller, 'audits'])->name($name . '.audits');
+            }
+            if (in_array('datatable', $only)) {
+                Route::match(['get', 'post'], $name . "/datatable", [$controller, 'datatable'])->name($name . '.datatable');
             }
             if (in_array('list', $only)) {
                 Route::get($name . '/list', [$controller, 'list'])->name($name . '.list');

@@ -218,7 +218,19 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('viewAny', $this->getModalClass());
         }
-        // $dt->setModel($this->getModalClass());
+         $dt->setModel($this->getModalClass());
+        $dt->setModel($this->getQueryBuilder());
+        $dt->setDataClass($this->getDataClass());
+
+        return ApiResponse::successResponse($dt->proceed());
+    }
+
+    public function datatable(DataTable $dt): JsonResponse
+    {
+        if ($this->getPolicyClass()) {
+            Gate::authorize('viewAny', $this->getModalClass());
+        }
+         $dt->setModel($this->getModalClass());
         $dt->setModel($this->getQueryBuilder());
         $dt->setDataClass($this->getDataClass());
 
@@ -231,11 +243,6 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('view', $modelInstance);
         }
-
-        if(($includes = request()->array('includes')) || ($includes = ($includeStr = request()->string('include')->toString()) ? explode(",",$includeStr) : [])){
-            $modelInstance->load(array_map(fn($include) => Str::camel($include), $includes));
-        }
-
         $dataClass = $this->getDataClass();
         return ApiResponse::successResponse($dataClass ? $dataClass::from($modelInstance) : $modelInstance);
     }
@@ -405,7 +412,7 @@ class BaseCrudController extends Controller
                 $success = $this->getModalClass()::reorderSequence($requestData->from_order, $requestData->to_order, $requestData->scopedValues);
             }
         } catch (Throwable $e) {
-            ApiResponse::failedResponse($e->getMessage());
+            return ApiResponse::failedResponse($e->getMessage());
         }
 
         if (!$success) {

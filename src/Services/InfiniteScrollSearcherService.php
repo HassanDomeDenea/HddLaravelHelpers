@@ -141,11 +141,9 @@ class InfiniteScrollSearcherService
                 });
 
             }
-            ray($this->modelQuery->getGroupBy());
             if(empty($this->modelQuery->getGroupBy())){
                 $total = $this->modelQuery->count();
             }else{
-                ray($this->modelQuery->toRawSql());
                 $total = DB::table(DB::raw("({$this->modelQuery->toRawSql()}) as sub"))->count();
             }
             $items = $this->modelQuery

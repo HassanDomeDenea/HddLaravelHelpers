@@ -39,7 +39,7 @@ class DateBetween implements ConditionExpression
         $formattedValueMax = $this->stringize($grammar, $this->valueMax instanceof DateTimeInterface ? new Value($this->valueMax->format('Y-m-d')) : ($this->autoCastToValues ? ($this->valueMax instanceof Expression ? $this->valueMax : new Value($this->valueMax)) : $this->valueMax));
         $mainColumn = match ($this->identify($grammar)) {
             'sqlite' => "strftime('%Y-%m-%d', $mainColumn)",
-            'mysql' => "DATE($mainColumn)",
+            'mysql','mariadb' => "DATE($mainColumn)",
             'pgsql' => "$mainColumn::date",
             default => $mainColumn
         };

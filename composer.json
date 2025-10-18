@@ -33,6 +33,7 @@
         "tpetry/laravel-query-expressions": "*"
     },
     "require-dev": {
+        "laradumps/laradumps": "^4.5",
         "larastan/larastan": "^2.11",
         "laravel/pint": "^1.0",
         "nunomaduro/collision": "^8.1.1||^7.10.0",

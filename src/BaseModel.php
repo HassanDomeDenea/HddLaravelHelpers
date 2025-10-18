@@ -12,6 +12,7 @@ use HassanDomeDenea\HddLaravelHelpers\Traits\HasFactoryMethods;
 use HassanDomeDenea\HddLaravelHelpers\Traits\HasModelRules;
 use HassanDomeDenea\HddLaravelHelpers\Traits\HasReordering;
 use HassanDomeDenea\HddLaravelHelpers\Traits\TransformsToData;
+use Illuminate\Database\Eloquent\BroadcastsEvents;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -36,5 +37,6 @@ class BaseModel extends Model implements Auditable
     use HasCreateAndDeleteMany;
     use HasModelRules;
     use HasFactoryMethods;
+
 
 }

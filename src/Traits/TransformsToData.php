@@ -2,6 +2,7 @@
 
 namespace HassanDomeDenea\HddLaravelHelpers\Traits;
 
+use HassanDomeDenea\HddLaravelHelpers\Helpers\PathHelpers;
 use Illuminate\Support\Str;
 use LogicException;
 use Spatie\LaravelData\Data;
@@ -35,41 +36,12 @@ trait TransformsToData
      */
     protected function guessData(): Data
     {
-        foreach (static::guessDataName() as $dataClass) {
-            if (is_string($dataClass) && class_exists($dataClass)) {
-                return $dataClass::from($this);
-            }
+        /** @var class-string<Data>|false $dataClass */
+        $dataClass = PathHelpers::getDataClassFromModelClass(static::class);
+        if($dataClass){
+            return $dataClass::from($this);
         }
 
         throw new LogicException(sprintf('Failed to find data class for model [%s].', get_class($this)));
-    }
-
-    /**
-     * Guess the data class name for the model.
-     *
-     * @return array<class-string<Data>>
-     */
-    public static function guessDataName(): array
-    {
-        $modelClass = static::class;
-
-        if (! Str::contains($modelClass, '\\Models\\')) {
-            return [];
-        }
-
-        $relativeNamespace = Str::after($modelClass, '\\Models\\');
-
-        $relativeNamespace = Str::contains($relativeNamespace, '\\')
-            ? Str::before($relativeNamespace, '\\'.class_basename($modelClass))
-            : '';
-
-        $potentialData = sprintf(
-            '%s\\Data\\%s%s',
-            Str::before($modelClass, '\\Models'),
-            strlen($relativeNamespace) > 0 ? $relativeNamespace.'\\' : '',
-            class_basename($modelClass)
-        );
-
-        return [$potentialData.'Data', $potentialData];
     }
 }

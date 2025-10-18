@@ -184,7 +184,7 @@ class CustomRelationProvider extends ServiceProvider
 
             $query->select([]);
             foreach ($columns as $column){
-                $columnAlias = Str::snake($relation . ' ' . $column['function']. '  ' . $column['column'] );
+                $columnAlias = Str::snake($relation . ' ' . $column['function']. '  ' . ($column['column']==='*' ? '' : $column['column']) );
                 $aggregateMethod = match (strtolower($column['function'])) {
                     'avg' => Avg::class,
                     'count' => Count::class,

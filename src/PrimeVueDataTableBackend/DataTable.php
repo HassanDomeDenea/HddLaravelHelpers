@@ -24,6 +24,7 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Kirschbaum\PowerJoins\JoinsHelper;
@@ -231,12 +232,14 @@ class DataTable
         if (!empty($this->relations)) {
             $query->with(array_unique(array_map(fn($i)=>Str::camel($i),$this->relations)));
         }
+
         if (!empty($this->relationsCounts)) {
             $query->withCount(array_unique(array_map(fn($i)=>Str::camel($i),$this->relations)));
         }
+
         if ($this->relationsAggregates->isNotEmpty()) {
-            $this->relationsAggregates->each(function ($columns, $relation) use ($query) {
-                $query->joinRelationAggregate(Str::camel($relation), $columns->toArray());
+            $this->relationsAggregates->each(function ($columnDefinition, $relation) use ($query) {
+                $query->joinRelationAggregate(Str::camel($relation), $columnDefinition->toArray());
             });
         }
     }
@@ -340,8 +343,8 @@ class DataTable
                 //$isRelationCountField = true;
                 // [$columnName] = $targetQuery->relationAggregateQuery(Str::beforeLast($columnName, '_count'), '*', 'count', false);
             } elseif ($field?->filterSource->in([FieldType::relationMany])) {
-                $columnName = Str::afterLast($columnName, '.');
                 $relationManyField = Str::beforeLast($columnName, '.');
+                $columnName = Str::afterLast($columnName, '.');
             }
         }
 
@@ -349,6 +352,7 @@ class DataTable
 
 
         if ($relationManyField) {
+
             $filterCallback = function (Builder $q) use ($relationManyField, $matchMode, $value, $columnName) {
                 $this->addFilterToField($relationManyField . '.' . $columnName, $value, $matchMode, $q, skipCheckingRelations: true);
             };
@@ -845,7 +849,6 @@ class DataTable
         if (!$this->payload) {
             $this->setPayload();
         }
-        ray()->clearScreen();
         $payload = $this->payload;
         $this->processFixedFilters();
         $this->processGroupedFilters($this->query, $this->payload->fixedGroupedFilters, 'and');
@@ -863,9 +866,9 @@ class DataTable
         }
         $this->processJoinsAndRelations($countQuery);
 
-        $countColumn = null;
+        $countColumn = "*";
         if (!empty($this->joins)) {
-            $countColumn = DB::raw($this->mainTableName . '.id');
+            // $countColumn = DB::raw($this->mainTableName . '.*');
         }
         $totalWithoutFilters = $countQuery->count($countColumn);
         $this->countQuery = $countQuery;
@@ -952,7 +955,7 @@ class DataTable
             if ($source?->is(FieldType::relationCount)) {
                 $relation = Str::beforeLast($fullFieldName, '_count');
                 $aggregateFunction = 'count';
-                $column = '';
+                $column = '*';
             } else {
                 [$relation, $aggregateFunction, $column] = StringHelpers::parseAggregateString($fullFieldName);
             }

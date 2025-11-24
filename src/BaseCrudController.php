@@ -191,8 +191,12 @@ class BaseCrudController extends Controller
 
     public function list(): ApiResponse
     {
-        if ($this->getPolicyClass()) {
-            Gate::authorize('viewAny', $this->getModalClass());
+        if ($policyClass = $this->getPolicyClass()) {
+            if(method_exists($policyClass, 'viewList')){
+                Gate::authorize('viewList', $this->getModalClass());
+            }else{
+                Gate::authorize('viewAny', $this->getModalClass());
+            }
         }
 
         $listModelRequestData = ListModelRequestData::validateAndCreate(request()->all());

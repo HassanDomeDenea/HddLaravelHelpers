@@ -27,7 +27,7 @@ trait HasActiveItems
     protected function disabled(): Attribute
     {
         return Attribute::get(
-            fn($value, array $attributes) => $attributes[$this->isActiveColumn] ?? $this->defaultIsActiveValue
+            fn($value, array $attributes) => !($attributes[$this->isActiveColumn] ?? $this->defaultIsActiveValue)
         );
     }
 }

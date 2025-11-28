@@ -8,7 +8,11 @@ use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Fluent;
 use Illuminate\Support\Traits\Macroable;
+use ReflectionClass;
+use ReflectionProperty;
+use Spatie\LaravelData\Attributes\WithoutValidation;
 use Spatie\LaravelData\Data;
+use Str;
 
 class BaseData extends Data
 {
@@ -35,6 +39,24 @@ class BaseData extends Data
     public function toFluent(): Fluent
     {
         return fluent($this->toArray());
+    }
+
+    public function toValidated(): array
+    {
+        $reflection = new ReflectionClass(static::class);
+
+        $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
+        $excludePropertyAttribute = WithoutValidation::class;
+
+        $validatedProperties = array_filter($properties, function (ReflectionProperty $property) use ($excludePropertyAttribute) {
+            return empty($property->getAttributes($excludePropertyAttribute));
+        });
+
+
+        return array_reduce(array: $validatedProperties, callback: function (array $carry, ReflectionProperty $property) {
+            $carry[Str::snake($property->getName())] = $this->{$property->getName()};
+            return $carry;
+        }, initial: []);
     }
 
     /**

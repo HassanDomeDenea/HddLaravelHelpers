@@ -18,12 +18,18 @@ class MediaController
     public function show($media): BinaryFileResponse
     {
         $media = Media::findOrFail($media);
+        if($media->getCustomProperty('auth') && ! auth()->check()){
+            abort(403, __('Unauthorized'));
+        }
         return response()->file($media->getPath());
     }
 
     public function download($media): BinaryFileResponse
     {
         $media = Media::findOrFail($media);
+        if($media->getCustomProperty('auth') && ! auth()->check()){
+            abort(403, __('Unauthorized'));
+        }
         return response()->download($media->getPath(), $media->getDownloadFilename());
     }
 

@@ -46,6 +46,7 @@ class BaseCrudController extends Controller
     public string|null $modelClass = null;
     public string|null $policyClass = null;
     protected array $allowedIncludes = [];
+    protected array $allowedFilters = [];
 
     public ?string $dataClass = null;
 
@@ -87,6 +88,9 @@ class BaseCrudController extends Controller
             function (QueryBuilder $queryBuilder) {
                 if (filled($this->allowedIncludes)) {
                     $queryBuilder->allowedIncludes($this->allowedIncludes);
+                }
+                if (filled($this->allowedFilters)) {
+                    $queryBuilder->allowedFilters($this->allowedFilters);
                 }
             });
     }
@@ -200,7 +204,7 @@ class BaseCrudController extends Controller
         }
 
         $listModelRequestData = ListModelRequestData::validateAndCreate(request()->all());
-        $builderQuery = $this->getModalClass()::query()
+        $builderQuery = $this->getQueryBuilder()
             ->when(filledOptional($listModelRequestData->filterBy), function ($query) use ($listModelRequestData) {
                 $query->where($listModelRequestData->filterBy, $listModelRequestData->filterValue);
             })

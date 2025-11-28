@@ -19,6 +19,7 @@ trait HasDeletableCheck
 
     public function customDeleteLogic(): void
     {
+        // TODO: if it has HasReordering trait, re set the order_sequence
         $this->delete();
     }
 

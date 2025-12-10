@@ -12,7 +12,7 @@ class Field
     public FieldType $filterSource;
     public ?string $morphableTo;
 
-    public function __construct(public string $name, public ?string $relation = null, string $source = 'main', ?string $filterSource = null, ?string $sortSource = null, public ?string $filterField = null, public ?string $sortField = null, ?string $morphableTo = null)
+    public function __construct(public string $name, public ?string $relation = null, ?string $source = 'main', ?string $filterSource = null, ?string $sortSource = null, public ?string $filterField = null, public ?string $sortField = null, ?string $morphableTo = null)
     {
         $this->columnName = $this->name;
         $this->sortField ??= $this->name;

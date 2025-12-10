@@ -215,17 +215,48 @@ class DataTable
      */
     private function processJoinsAndRelations(Builder|\Spatie\QueryBuilder\QueryBuilder|Relation $query): void
     {
+        $customJoinCalls = [];
+
         foreach (array_unique($this->joins) as $join) {
             $joinName = $join;
+            $currentParent = $this->getQuery()->newModelInstance();
             if (Str::contains($joinName, '.')) {
                 $joinNamesList = explode('.', $joinName);
                 $joinNamesAliases = [];
+                $lastJoinNameAlias= null;
                 foreach ($joinNamesList as $joinNameAlias) {
-                    $joinNamesAliases[$joinNameAlias] = fn($join2) => $join2->as($joinNameAlias);
+                    $camelJoinNameAlias = Str::camel($joinNameAlias);
+                    if(method_exists($currentParent,$camelJoinNameAlias.'OnJoin')){
+                        $customJoinCalls[$camelJoinNameAlias] = [clone $currentParent, $camelJoinNameAlias.'OnJoin', [$query,$joinNameAlias,...$lastJoinNameAlias ? [$lastJoinNameAlias] : []]];
+                    }
+                    $currentParent = $currentParent->{$camelJoinNameAlias}()->getRelated();
+                    if(empty($customJoinCalls)){
+                        $joinNamesAliases[$camelJoinNameAlias] = fn($join2) => $join2->as($joinNameAlias);
+                    }
+                    $lastJoinNameAlias = $joinNameAlias;
                 }
-                $query->leftJoinRelationship(Str::camel($joinName), $joinNamesAliases, morphable: $this->joinsMorphableTo[$join] ?? null);
+                if(filled($joinNamesAliases)){
+                    if(count($joinNamesAliases) > 1){
+                        $query->leftJoinRelationship(join(".", array_keys($joinNamesAliases)), $joinNamesAliases, morphable: $this->joinsMorphableTo[$join] ?? null);
+                    }else{
+                        $joinName = array_key_first($joinNamesAliases);
+                        $query->leftJoinRelationship($joinName, $joinNamesAliases[$joinName], morphable: $this->joinsMorphableTo[$join] ?? null);
+                    }
+                }
             } else {
-                $query->leftJoinRelationship(Str::camel($joinName), fn(PowerJoinClause $join) => $join->as($joinName), morphable: $this->joinsMorphableTo[$join] ?? null);
+                $camelJoinNameAlias=Str::camel($joinName);
+                if(method_exists($currentParent,$camelJoinNameAlias.'OnJoin')){
+                    $customJoinCalls[$camelJoinNameAlias] = [clone $currentParent, $camelJoinNameAlias.'OnJoin', [$query,$joinName]];
+                }else{
+                    $query->leftJoinRelationship($camelJoinNameAlias, fn(PowerJoinClause $join) => $join->as($joinName), morphable: $this->joinsMorphableTo[$join] ?? null);
+                }
+            }
+        }
+
+        if(filled($customJoinCalls)){
+            $query->select("$this->mainTableName.*");
+            foreach ($customJoinCalls as $customJoinCall) {
+                $customJoinCall[0]->{$customJoinCall[1]}(...$customJoinCall[2]);
             }
         }
 
@@ -895,6 +926,15 @@ class DataTable
         $items = $this->query->get();
         if ($this->_dataClass) {
             $items = $this->_dataClass::collect($items);
+            if($payload->options->onlyRequestedColumns){
+                $fields = $payload->fields->map(fn(Field $field) => Str::camel($field->name))->toArray();
+                if(filled($payload->options->primaryKey)){
+                    $fields[] = $payload->options->primaryKey;
+                }
+                $items->map(fn($item) => $item->only(...$fields));
+                // $items->only('name');
+//                $items->only($payload->fields->map(fn(Field $field) => $field->name));
+            }
         }
 
         if ($this->_itemsModifier) {

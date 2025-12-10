@@ -6,7 +6,9 @@ use Carbon\Carbon;
 use Exception;
 use HassanDomeDenea\HddLaravelHelpers\Data\MediaData;
 use HassanDomeDenea\HddLaravelHelpers\Helpers\ApiResponse;
+use HassanDomeDenea\HddLaravelHelpers\Helpers\SecurityHelpers;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Validation\Rule;
 use Spatie\Image\Enums\Orientation;
 use Spatie\Image\Image;
@@ -15,10 +17,15 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class MediaController
 {
-    public function show($media): BinaryFileResponse
+    public function show($mediaIdAndExtension): BinaryFileResponse
     {
-        $media = Media::findOrFail($media);
-        if($media->getCustomProperty('auth') && ! auth()->check()){
+        // Extension is commented for now as it is not needed
+        // $extension = pathinfo($mediaIdAndExtension,PATHINFO_EXTENSION);
+
+        $mediaId = pathinfo($mediaIdAndExtension, PATHINFO_FILENAME);
+        $media = Media::findOrFail($mediaId);
+        $isAuthenticated = SecurityHelpers::AuthenticateFromCookie();
+        if ($media->getCustomProperty('auth') && !$isAuthenticated) {
             abort(403, __('Unauthorized'));
         }
         return response()->file($media->getPath());

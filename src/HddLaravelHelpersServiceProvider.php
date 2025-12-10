@@ -107,6 +107,7 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
             ->name('HddLaravelHelpers')
             ->hasConfigFile('hdd-laravel-helpers')
             ->hasRoutes('api', 'web','channels')
+            ->hasTranslations()
 //            ->hasViews()
 //            ->hasMigration('create_hddlaravelhelpers_table')
             ->hasCommands(

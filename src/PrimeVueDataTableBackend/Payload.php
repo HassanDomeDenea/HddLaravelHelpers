@@ -38,6 +38,7 @@ class Payload
     public array $includes = [];
 
     public int $page;
+    public PayloadOptions $options;
 
     public Collection $globalFilters;
 
@@ -66,6 +67,10 @@ class Payload
         $this->groupedFilter = $validated->has('groupedFilters') ? new GroupedFilter(...$validated->array('groupedFilters')) : null;
         $this->fixedGroupedFilters = $validated->has('fixedGroupedFilters') ? new GroupedFilter(...$validated->array('fixedGroupedFilters')) : null;
         $this->page = $this->perPage === -1 ? 1 : $validated->integer('page', 1);
+        $this->options = new PayloadOptions(
+            onlyRequestedColumns: $validated->boolean('options.onlyRequestedColumns', true),
+            primaryKey: $validated->string('options.primaryKey')
+        );
 
         $this->first = ($this->page - 1) * $this->perPage;
 
@@ -89,6 +94,8 @@ class Payload
             'first' => 'integer',
             'perPage' => 'integer',
             'page' => 'integer|gte:-1',
+            'options.onlyRequestedColumns' => ['sometimes','nullable',Rule::in([true,false,'true','false','1','0',1,0])],
+            'options.primaryKey' => ['sometimes','nullable','string'],
             'globalFilters' => 'array',
             'globalFilters.*' => 'string',
             'includes' => 'array',
@@ -127,11 +134,11 @@ class Payload
             'fields' => 'array',
             'fields.*.name' => ['required', 'string'],
             'fields.*.relation' => ['nullable', 'string'],
-            'fields.*.source' => ['required', Rule::enum(FieldType::class)],
+            'fields.*.source' => [Rule::enum(FieldType::class)],
             'fields.*.filterSource' => [Rule::enum(FieldType::class)],
             'fields.*.sortSource' => [Rule::enum(FieldType::class)],
-            'fields.*.filterField' => ['required', 'string'],
-            'fields.*.sortField' => ['required', 'string'],
+            'fields.*.filterField' => ['string'],
+            'fields.*.sortField' => ['string'],
             'fields.*.morphableTo' => ['nullable', 'string'],
             'sorts' => '',
             'sorts.*.field' => ['required', 'string'],

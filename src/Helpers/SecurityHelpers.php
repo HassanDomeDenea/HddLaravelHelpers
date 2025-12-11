@@ -3,6 +3,7 @@
 namespace HassanDomeDenea\HddLaravelHelpers\Helpers;
 
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\Log;
 
 class SecurityHelpers
 {

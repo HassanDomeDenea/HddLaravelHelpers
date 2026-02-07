@@ -16,6 +16,7 @@ class InfiniteScrollRequest extends FormRequest
             'multiple_ids' => 'boolean',
             'limit' => 'integer:gte:1',
             'date' => 'date',
+            'id_field' => 'nullable|string',
             'order_by' => 'nullable|string',
             'order_direction' => 'nullable|in:asc,desc',
         ];

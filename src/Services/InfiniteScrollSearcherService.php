@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace HassanDomeDenea\HddLaravelHelpers\Services;
 
 use DB;
@@ -26,6 +28,7 @@ class InfiniteScrollSearcherService
     protected bool $_includeId = false;
 
     protected bool $onlyId = false;
+
     protected bool $multipleIds = false;
 
     protected bool $_allowEmpty = true;
@@ -44,9 +47,10 @@ class InfiniteScrollSearcherService
         $this->_limit = $request->integer('limit', 25);
         $this->onlyId = $request->boolean('only_id');
         $this->multipleIds = $request->boolean('multiple_ids');
+        $this->_idColumn = $request->string('id_field', 'id')->toString();
         if ($request->order_by) {
             $this->modelQuery->orderBy($request->order_by, $request->order_by_direction ?: 'asc');
-        } else if ($defaultOrderColumn) {
+        } elseif ($defaultOrderColumn) {
             $this->modelQuery->orderBy($defaultOrderColumn, $defaultOrderDirection);
         } else {
             $this->modelQuery->orderBy(array_key_first($this->filterColumns));
@@ -68,7 +72,7 @@ class InfiniteScrollSearcherService
     }
 
     /**
-     * @param class-string<Data|Resource>|null $value
+     * @param  class-string<Data|resource>|null  $value
      * @return $this
      */
     public function setDataClass(?string $value): self
@@ -92,7 +96,7 @@ class InfiniteScrollSearcherService
                             $query->whereIn($this->_idColumn, $this->name);
                         }
                     } else {
-                        $this->trimmedName = trim($this->name);
+                        $this->trimmedName = mb_trim($this->name);
                         if (is_array($this->_idColumn)) {
                             foreach ($this->_idColumn as $column) {
                                 $query->where($column, $this->trimmedName, boolean: 'or');
@@ -103,7 +107,7 @@ class InfiniteScrollSearcherService
                     }
                 });
             } else {
-                $this->trimmedName = trim($this->name);
+                $this->trimmedName = mb_trim($this->name);
                 $filtersBoolean = $this->filtersBoolean;
                 $this->modelQuery->where(function (Builder $query) use ($filtersBoolean) {
                     if ($this->_includeId) {
@@ -141,9 +145,9 @@ class InfiniteScrollSearcherService
                 });
 
             }
-            if(empty($this->modelQuery->getGroupBy())){
+            if (empty($this->modelQuery->getGroupBy())) {
                 $total = $this->modelQuery->count();
-            }else{
+            } else {
                 $total = DB::table(DB::raw("({$this->modelQuery->toRawSql()}) as sub"))->count();
             }
             $items = $this->modelQuery

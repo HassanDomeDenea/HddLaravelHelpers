@@ -8,8 +8,10 @@ use HassanDomeDenea\HddLaravelHelpers\Commands\HddLaravelHelpersCommand;
 use HassanDomeDenea\HddLaravelHelpers\Helpers\ApiResponse;
 use HassanDomeDenea\HddLaravelHelpers\Providers\CustomRelationProvider;
 use HassanDomeDenea\HddLaravelHelpers\Providers\YamlTranslationServiceProvider;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Routing\ResponseFactory;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\LaravelPackageTools\Exceptions\InvalidPackage;
 use Spatie\LaravelPackageTools\Package;
@@ -25,6 +27,15 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
         app()->register(YamlTranslationServiceProvider::class);
         app()->register(CustomRelationProvider::class);
 
+
+        Schema::macro('dropColumnsIfExist', function (string $table, array | string $columns) {
+            if(!is_array($columns)) {
+                $columns = [$columns];
+            }
+            foreach ($columns as $column) {
+                Schema::whenTableHasColumn($table, $column, fn(Blueprint $table) => $table->dropColumn($column));
+            }
+        });
 
         Route::macro('apiResourceMany', function (string $name, string $controller, ?array $only = null) {
             if ($only === null) {
@@ -106,7 +117,7 @@ class HddLaravelHelpersServiceProvider extends PackageServiceProvider
         $package
             ->name('HddLaravelHelpers')
             ->hasConfigFile('hdd-laravel-helpers')
-            ->hasRoutes('api', 'web','channels')
+            ->hasRoutes('api', 'web', 'channels')
             ->hasTranslations()
 //            ->hasViews()
 //            ->hasMigration('create_hddlaravelhelpers_table')

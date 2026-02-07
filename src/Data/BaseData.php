@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace HassanDomeDenea\HddLaravelHelpers\Data;
@@ -16,15 +17,26 @@ use Str;
 
 class BaseData extends Data
 {
-    use Macroable;
     use HasTranslatableAttributes;
+    use Macroable;
 
-    protected array|null $originalPayload = null;
+    protected ?array $originalPayload = null;
+
+    /**
+     * Overwrite original method, so that original payload is saved.
+     */
+    public static function validateAndCreate(Arrayable|array $payload): static
+    {
+        $object = static::factory()->alwaysValidate()->from($payload);
+        $object->setOriginalPayload($payload);
+
+        return $object;
+    }
 
     /**
      * Set original payload when data class is usually created from it.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      */
     public function setOriginalPayload(array $payload): void
     {
@@ -33,8 +45,6 @@ class BaseData extends Data
 
     /**
      * Generate a fluent array representation of the data.
-     *
-     * @return Fluent
      */
     public function toFluent(): Fluent
     {
@@ -52,11 +62,16 @@ class BaseData extends Data
             return empty($property->getAttributes($excludePropertyAttribute));
         });
 
-
         return array_reduce(array: $validatedProperties, callback: function (array $carry, ReflectionProperty $property) {
             $carry[Str::snake($property->getName())] = $this->{$property->getName()};
+
             return $carry;
         }, initial: []);
+    }
+
+    public function toFluentValidated()
+    {
+        return fluent($this->toValidated());
     }
 
     /**
@@ -70,26 +85,39 @@ class BaseData extends Data
         }
         if (blank($keys)) {
             return $object;
-        } else {
-            if (is_string($keys)) {
-                return $object->get($keys, $default);
-            } else {
-                return $object->only($keys);
-            }
         }
+        if (is_string($keys)) {
+            return $object->get($keys, $default);
+        }
+
+        return $object->only($keys);
     }
 
     /**
-     *
-     * Overwrite original method, so that original payload is saved.
-     *
-     * @param Arrayable|array $payload
-     * @return static
+     * Return the original payload the data class was created from, for validated properties only.
      */
-    public static function validateAndCreate(Arrayable|array $payload): static
+    public function safeValidated(): Fluent|array|null
     {
-        $object = static::factory()->alwaysValidate()->from($payload);
-        $object->setOriginalPayload($payload);
-        return $object;
+        $object = is_null($this->originalPayload) ? null : fluent(Arr::only($this->originalPayload, static::getPayloadAttributeNames()));
+        if (blank($object)) {
+            return null;
+        }
+        $reflection = new ReflectionClass(static::class);
+        $properties = $reflection->getProperties(ReflectionProperty::IS_PUBLIC);
+        $excludePropertyAttribute = WithoutValidation::class;
+        $validatedProperties = array_filter($properties, function (ReflectionProperty $property) use ($excludePropertyAttribute) {
+            return empty($property->getAttributes($excludePropertyAttribute));
+        });
+
+        $result = array_reduce(array: $validatedProperties, callback: function (array $carry, ReflectionProperty $property) use ($object) {
+            $snakeName = Str::snake($property->getName());
+            if ($object->has($snakeName)) {
+                $carry[Str::snake($property->getName())] = $object->get($snakeName);
+            }
+
+            return $carry;
+        }, initial: []);
+
+        return fluent($result);
     }
 }

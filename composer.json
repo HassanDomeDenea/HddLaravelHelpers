@@ -1,6 +1,6 @@
 {
     "name": "hassandomedenea/hddlaravelhelpers",
-    "description": "Tools to build standard model structure and conenct to primevue frontend library",
+    "description": "Tools to build standard model structure and connect to primevue frontend library",
     "keywords": [
         "HassanDomeDenea",
         "laravel",
@@ -17,7 +17,7 @@
     ],
     "require": {
         "php": "^8.2",
-        "archtechx/enums": "*",
+        "archtechx/enums": "^1",
         "illuminate/contracts": "^10.0||^11.0||^12.0",
         "jaybizzle/crawler-detect": "^1.3",
         "kirschbaum-development/eloquent-power-joins": "^4.2",
@@ -31,7 +31,7 @@
         "spatie/typescript-transformer": "^2.4",
         "symfony/filesystem": "^7.2",
         "touhidurabir/laravel-stub-generator": "^1.0",
-        "tpetry/laravel-query-expressions": "*"
+        "tpetry/laravel-query-expressions": "^1"
     },
     "require-dev": {
         "laradumps/laradumps": "^4.5",

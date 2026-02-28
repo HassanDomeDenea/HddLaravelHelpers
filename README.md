@@ -1,6 +1,6 @@
 ## Pulling
 
-git clone --recurse-submodules https://HassanoDomeDenea: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@github.com/HassanDomeDenea/HddLaravelHelpers.git
+git clone --recurse-submodules https://github.com/HassanDomeDenea/HddLaravelHelpers.git
 
 # Tools to build standard model structure and conenct to primevue frontend library
 

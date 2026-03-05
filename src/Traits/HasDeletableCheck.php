@@ -43,27 +43,27 @@ trait HasDeletableCheck
     public static function checkAndDeleteMany(array $ids, ?callable $validator = null): void
     {
         try {
-            DB::beginTransaction();
-            static::whereIn('id', $ids)
-                ->chunk(1000,
-                    function (Collection $collection) use ($validator) {
-                        $collection->each(/**
-                         * @param BaseModel $model
-                         * @return void
-                         */ function (Model $model) use (
-                            $validator,
-                        ) {
-                            if (
-                                ($errorMsg = $model->canBeDeleted()) === true
-                                && (!$validator || ($errorMsg = $validator($model)) === true)
+            DB::transaction(function () use ($validator, $ids) {
+                static::whereIn('id', $ids)
+                    ->chunk(1000,
+                        function (Collection $collection) use ($validator) {
+                            $collection->each(/**
+                             * @param BaseModel $model
+                             * @return void
+                             */ function (Model $model) use (
+                                $validator,
                             ) {
-                                $model->customDeleteLogic();
-                            } else {
-                                throw ValidationException::withMessages(['ids' => [$errorMsg]]);
-                            }
+                                if (
+                                    ($errorMsg = $model->canBeDeleted()) === true
+                                    && (!$validator || ($errorMsg = $validator($model)) === true)
+                                ) {
+                                    $model->customDeleteLogic();
+                                } else {
+                                    throw ValidationException::withMessages(['ids' => [$errorMsg]]);
+                                }
+                            });
                         });
-                    });
-            DB::commit();
+            });
 
         } catch (Throwable $e) {
             throw ValidationException::withMessages(['ids' => [$e->getMessage() ?: __('Error Occurred')]]);

@@ -12,8 +12,8 @@ class PreventCrawlersMiddleware
     public function handle(Request $request, Closure $next): Response
     {
         $CrawlerDetect = new CrawlerDetect;
-        abort_if($CrawlerDetect->isCrawler(),404,"Bots are unauthorized");
+        abort_if($CrawlerDetect->isCrawler(), 404, "Bots are unauthorized");
         return $next($request);
 
-}
+    }
 }

@@ -6,6 +6,7 @@ namespace HassanDomeDenea\HddLaravelHelpers\Services;
 
 use Exception;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
@@ -58,7 +59,7 @@ class DatabaseBackupManager
         return $result;
     }
 
-    public function restore(string $backupPath): void
+    public function restore(string $backupPath, $migrate = false): void
     {
         $connectionName = config('database.default');
         $config = config("database.connections.{$connectionName}");
@@ -86,6 +87,10 @@ class DatabaseBackupManager
 
         if ($uncompressedBackupPath !== $backupPath) {
             @unlink($uncompressedBackupPath);
+        }
+
+        if($migrate){
+            Artisan::call('migrate', ['--force' => true]);
         }
 
     }

@@ -45,7 +45,6 @@ class CustomRelationProvider extends ServiceProvider
         Builder::macro('isSqlite', function () {
             return $this->getConnection() instanceof SQLiteConnection;
         });
-//        $aggregateMethods = ['Avg', 'Max', 'Min', 'Sum'];
     }
 
     private function addHavingMacros(): void
@@ -340,15 +339,12 @@ class CustomRelationProvider extends ServiceProvider
         Builder::macro('whereAggregateIn', function ($relation, $column, $function = null, $value = null, string $boolean = 'and', bool $not = false) {
             return $this->whereAggregate($relation, $column, $function, 'in', $value, $boolean, $not);
         });
-
         Builder::macro('orWhereAggregateIn', function ($relation, $column, $function = null, $value = null, bool $not = false) {
             return $this->whereAggregate($relation, $column, $function, 'in', $value, 'or', $not);
         });
-
         Builder::macro('whereAggregateNotIn', function ($relation, $column, $function = null, $value = null, string $boolean = 'and') {
             return $this->whereAggregate($relation, $column, $function, 'notIn', $value, $boolean, true);
         });
-
         Builder::macro('orWhereAggregateNotIn', function ($relation, $column, $function = null, $value = null) {
             return $this->whereAggregate($relation, $column, $function, 'notIn', $value, 'or');
         });

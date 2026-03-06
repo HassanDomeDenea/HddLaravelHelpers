@@ -42,7 +42,7 @@ class DatabaseBackupManager
 
         if (config()->boolean('hdd-laravel-helpers.database-backup.gzip_compress', true)) {
             try {
-                $gzipBinaryPath = config('hdd-laravel-helpers.database-backup.gzip_binary');
+                $gzipBinaryPath = config('hdd-laravel-helpers.database-backup.gzip_binary','gzip');
                 $gzipProcess = \Symfony\Component\Process\Process::fromShellCommandline("\"$gzipBinaryPath\" \"$result\"");
                 $gzipProcess->setTimeout(300);
                 $gzipProcess->run();

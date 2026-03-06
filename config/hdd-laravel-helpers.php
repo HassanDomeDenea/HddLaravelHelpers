@@ -31,5 +31,9 @@ return [
         'bot_token'=>env('HDD_TELEGRAM_BOT_TOKEN'),
         'backup_chat_id'=>env('HDD_TELEGRAM_BACKUP_CHAT_ID'),
         'errors_chat_id'=>env('HDD_TELEGRAM_ERRORS_CHAT_ID'),
+    ],
+    'database-backup'=>[
+        'gzip_compress'=>env('HDD_DATABASE_BACKUP_GZIP_COMPRESS',true),
+        'mysqldump_binary'=>env('HDD_DATABASE_BACKUP_MYSQLDUMP_BINARY','mysqldump'),
     ]
 ];

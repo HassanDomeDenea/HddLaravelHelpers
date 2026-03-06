@@ -35,5 +35,7 @@ return [
     'database-backup'=>[
         'gzip_compress'=>env('HDD_DATABASE_BACKUP_GZIP_COMPRESS',true),
         'mysqldump_binary'=>env('HDD_DATABASE_BACKUP_MYSQLDUMP_BINARY','mysqldump'),
+        'mysql_client_binary' => env('HDD_DATABASE_BACKUP_MYSQL_CLIENT_BINARY', 'mysql'),
+        'gzip_binary'=>env('HDD_DATABASE_BACKUP_GZIP_BINARY','gzip'),
     ]
 ];

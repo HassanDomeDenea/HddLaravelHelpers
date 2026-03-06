@@ -256,8 +256,15 @@ class DatabaseBackupManager
     /**
      * Check if a file is gzip compressed based on extension
      */
-    protected function isGzipCompressed(string $path): bool
+    protected function isGzipCompressed(string $filePath): bool
     {
-        return str_ends_with($path, '.gz') || str_ends_with($path, '.gzip');
+        $handle = fopen($filePath, 'rb');
+        if (!$handle) return false;
+
+        $bytes = fread($handle, 2);
+        fclose($handle);
+
+        // Check gzip signature
+        return $bytes === "\x1F\x8B";
     }
 }

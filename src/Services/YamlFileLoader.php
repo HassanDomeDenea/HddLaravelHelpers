@@ -13,8 +13,8 @@ class YamlFileLoader extends FileLoader
     {
         return collect(array_merge($this->jsonPaths, $this->paths))
             ->reduce(/**
-       * @throws FileNotFoundException
-       */ function ($output, $path) use ($locale) {
+             * @throws FileNotFoundException
+             */ function ($output, $path) use ($locale) {
 
                 if ($this->files->exists($full = "$path/$locale.json")) {
                     $decoded = json_decode($this->files->get($full), true);
@@ -26,7 +26,9 @@ class YamlFileLoader extends FileLoader
                     $output = array_merge($output, $decoded);
                 } elseif ($this->files->exists($full = "$path/$locale.yml")) {
                     $decoded = $this->parseYamlOrLoadFromCache($full);
-                    $output = array_merge($output, $decoded);
+                    if ($decoded) {
+                        $output = array_merge($output, $decoded);
+                    }
                 } elseif ($this->files->exists($full = "$path/$locale.yaml")) {
                     $decoded = $this->parseYamlOrLoadFromCache($full);
                     if ($decoded) {
@@ -43,15 +45,15 @@ class YamlFileLoader extends FileLoader
      */
     protected function parseYamlOrLoadFromCache($file)
     {
-        $cashedFile = storage_path().'/framework/cache/yaml.lang.cache.'.md5($file).'.php';
+        $cashedFile = storage_path() . '/framework/cache/yaml.lang.cache.' . md5($file) . '.php';
         if (@filemtime($cashedFile) < filemtime($file)) {
             $parser = new Parser;
             $content = $parser->parse(file_get_contents($file));
             $dir = dirname($cashedFile);
-            if (! is_dir($dir)) {
+            if (!is_dir($dir)) {
                 mkdir($dir, 0777, true);
             }
-            file_put_contents($cashedFile, '<?php'.PHP_EOL.PHP_EOL.'return '.var_export($content, true).';');
+            file_put_contents($cashedFile, '<?php' . PHP_EOL . PHP_EOL . 'return ' . var_export($content, true) . ';');
 
             return $content;
         }

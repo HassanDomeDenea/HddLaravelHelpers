@@ -74,6 +74,9 @@
             "@format:test",
             "@test:analyse",
             "@test:coverage"
+        ],
+        "post-update-cmd": [
+            "@php artisan boost:update --ansi"
         ]
     },
     "config": {

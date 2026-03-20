@@ -66,6 +66,7 @@ class DatabaseBackupManager
 
         $uncompressedBackupPath = $backupPath;
         if ($this->isGzipCompressed($backupPath)) {
+            Log::info("Restoring Gzip database from $backupPath");
             $extractPath = Str::beforeLast($backupPath, '.');
             $gzipBinaryPath = config('hdd-laravel-helpers.database-backup.gzip_binary');
             $gzipProcess = \Symfony\Component\Process\Process::fromShellCommandline("\"$gzipBinaryPath\" -dc \"$backupPath\" > \"$extractPath\"");
@@ -76,6 +77,8 @@ class DatabaseBackupManager
             } else {
                 Log::error($gzipProcess->getErrorOutput());
             }
+        }else{
+            Log::info("Restoring database from $backupPath");
         }
 
         match ($config['driver']) {

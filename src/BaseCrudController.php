@@ -90,7 +90,7 @@ class BaseCrudController extends Controller
                     $queryBuilder->allowedIncludes($this->allowedIncludes);
                 }
                 if (filled($this->allowedFilters)) {
-                    $queryBuilder->allowedFilters($this->allowedFilters);
+                    $queryBuilder->allowedFilters(...$this->allowedFilters);
                 }
             });
     }

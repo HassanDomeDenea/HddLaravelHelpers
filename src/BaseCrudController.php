@@ -87,10 +87,10 @@ class BaseCrudController extends Controller
         return tap(QueryBuilder::for($this->getModalClass()),
             function (QueryBuilder $queryBuilder) {
                 if (filled($this->allowedIncludes)) {
-                    $queryBuilder->allowedIncludes($this->allowedIncludes);
+                    $queryBuilder->allowedIncludes(...$this->allowedIncludes);
                 }
                 if (filled($this->allowedFilters)) {
-                    $queryBuilder->allowedFilters($this->allowedFilters);
+                    $queryBuilder->allowedFilters(...$this->allowedFilters);
                 }
             });
     }

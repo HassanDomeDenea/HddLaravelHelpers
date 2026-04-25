@@ -30,6 +30,7 @@
         "spatie/laravel-typescript-transformer": "^2.5",
         "spatie/typescript-transformer": "^2.4",
         "symfony/filesystem": "^7.2",
+        "symfony/yaml": "^8.0",
         "tpetry/laravel-query-expressions": "^1"
     },
     "require-dev": {
@@ -83,7 +84,7 @@
             "@test:coverage"
         ],
         "post-update-cmd": [
-            "@php artisan boost:update --ansi"
+
         ]
     },
     "config": {

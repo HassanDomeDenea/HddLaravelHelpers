@@ -54,7 +54,6 @@ class BaseCrudController extends Controller
     public ?string $updateFormRequestClass = null;
     public ?string $createActionClass = null;
     public ?string $updateActionClass = null;
-
     public ?string $deleteActionClass = null;
 
     public ?string $pluckByColumnName = null;

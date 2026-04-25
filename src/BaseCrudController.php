@@ -27,7 +27,6 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use OwenIt\Auditing\Models\Audit;
 use Spatie\LaravelData\Data;
 use Spatie\QueryBuilder\QueryBuilder;
 use Throwable;
@@ -55,6 +54,8 @@ class BaseCrudController extends Controller
     public ?string $updateFormRequestClass = null;
     public ?string $createActionClass = null;
     public ?string $updateActionClass = null;
+
+    public ?string $deleteActionClass = null;
 
     public ?string $pluckByColumnName = null;
 
@@ -193,12 +194,26 @@ class BaseCrudController extends Controller
         }
     }
 
+    /**
+     * @return class-string| null
+     */
+    public function getDeleteActionClass(): string|null
+    {
+        if ($this->deleteActionClass && class_exists($this->deleteActionClass)) {
+            return $this->deleteActionClass;
+        } else if ($deleteActionClass = PathHelpers::getUpdateActionClassFromModelClass($this->getModalClass())) {
+            return $deleteActionClass;
+        } else {
+            return null;
+        }
+    }
+
     public function list(): ApiResponse
     {
         if ($policyClass = $this->getPolicyClass()) {
-            if(method_exists($policyClass, 'viewList')){
+            if (method_exists($policyClass, 'viewList')) {
                 Gate::authorize('viewList', $this->getModalClass());
-            }else{
+            } else {
                 Gate::authorize('viewAny', $this->getModalClass());
             }
         }
@@ -226,7 +241,7 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('viewAny', $this->getModalClass());
         }
-         $dt->setModel($this->getModalClass());
+        $dt->setModel($this->getModalClass());
         $dt->setModel($this->getQueryBuilder());
         $dt->setDataClass($this->getDataClass());
 
@@ -238,7 +253,7 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('viewAny', $this->getModalClass());
         }
-         $dt->setModel($this->getModalClass());
+        $dt->setModel($this->getModalClass());
         $dt->setModel($this->getQueryBuilder());
         $dt->setDataClass($this->getDataClass());
 
@@ -308,7 +323,7 @@ class BaseCrudController extends Controller
         } catch (Throwable $throwable) {
             return ApiResponse::failedResponse($throwable->getMessage());
         }
-        return ApiResponse::successResponse($ids,201);
+        return ApiResponse::successResponse($ids, 201);
     }
 
     /**
@@ -384,7 +399,12 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('delete', $modelInstance);
         }
-        $modelInstance->checkAndDelete();
+        $actionClassName = $this->getDeleteActionClass();
+        if ($actionClassName) {
+            app()->make($actionClassName)->handle($modelInstance);
+        } else {
+            $modelInstance->checkAndDelete();
+        }
 
         return ApiResponse::successResponse();
     }
@@ -394,7 +414,15 @@ class BaseCrudController extends Controller
         if ($this->getPolicyClass()) {
             Gate::authorize('deleteMany', $request->array('ids'));
         }
-        $this->getModalClass()::checkAndDeleteMany($request->array('ids'));
+        $actionClassName = $this->getDeleteActionClass();
+        if ($actionClassName) {
+            foreach ($request->array('ids') as $id) {
+                $modelInstance = $this->getModalClass()::findOrFail($id);
+                app()->make($actionClassName)->handle($modelInstance);
+            }
+        } else {
+            $this->getModalClass()::checkAndDeleteMany($request->array('ids'));
+        }
 
         return ApiResponse::successResponse();
     }

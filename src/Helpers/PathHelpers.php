@@ -97,6 +97,30 @@ class PathHelpers
         });
     }
 
+    /**
+     * @param class-string<Model> $modelClassName
+     * @return class-string<Data>|false
+     */
+    public static function getDeleteActionClassFromModelClass(string $modelClassName): string|false
+    {
+        return Cache::remember('HDD-' . $modelClassName . 'DeleteActionClass', app()->isProduction() ? CarbonInterval::day() : 1, function () use ($modelClassName) {
+
+            $isolateInSubFolders = config('hdd-laravel-helpers.data-classes.isolate-in-subfolders', true);
+            $baseModelClassName = class_basename($modelClassName);
+
+            $expectedClass = str($modelClassName)->replace('\Models\\', '\Actions\\' . ($isolateInSubFolders ? "$baseModelClassName\\" : '') . 'Delete');
+
+            $expectedClassWithAction = $expectedClass->append('Action');
+            if (class_exists($expectedClassWithAction)) {
+                return $expectedClassWithAction;
+            }
+            if (class_exists($expectedClass))
+                return $expectedClass;
+
+            return false;
+        });
+    }
+
     public static function getActionClassAttributeType(?string $actionClassName, int $parameterIndex = 0): ?string
     {
         if (empty($actionClassName)) {

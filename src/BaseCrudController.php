@@ -201,7 +201,7 @@ class BaseCrudController extends Controller
     {
         if ($this->deleteActionClass && class_exists($this->deleteActionClass)) {
             return $this->deleteActionClass;
-        } else if ($deleteActionClass = PathHelpers::getUpdateActionClassFromModelClass($this->getModalClass())) {
+        } else if ($deleteActionClass = PathHelpers::getDeleteActionClassFromModelClass($this->getModalClass())) {
             return $deleteActionClass;
         } else {
             return null;

@@ -13,6 +13,7 @@ use ReflectionClass;
 use ReflectionProperty;
 use Spatie\LaravelData\Attributes\WithoutValidation;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\Optional;
 use Str;
 
 class BaseData extends Data
@@ -63,7 +64,11 @@ class BaseData extends Data
         });
 
         return array_reduce(array: $validatedProperties, callback: function (array $carry, ReflectionProperty $property) {
-            $carry[Str::snake($property->getName())] = $this->{$property->getName()};
+            $value = $this->{$property->getName()};
+
+            if(!($value instanceof Optional)){
+                $carry[Str::snake($property->getName())] = $value;
+            }
 
             return $carry;
         }, initial: []);
@@ -112,7 +117,11 @@ class BaseData extends Data
         $result = array_reduce(array: $validatedProperties, callback: function (array $carry, ReflectionProperty $property) use ($object) {
             $snakeName = Str::snake($property->getName());
             if ($object->has($snakeName)) {
-                $carry[Str::snake($property->getName())] = $object->get($snakeName);
+                $value = $object->get($snakeName);
+
+                if(!($value instanceof Optional)){
+                    $carry[Str::snake($property->getName())] = $value;
+                }
             }
 
             return $carry;

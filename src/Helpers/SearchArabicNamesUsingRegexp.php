@@ -10,18 +10,30 @@ class SearchArabicNamesUsingRegexp
 
     public static function setSqliteFunction(): void
     {
-        if (! static::$sqliteFunctionIsCreated && DB::connection()->getName() === 'sqlite') {
-            DB::connection()->getPdo()->sqliteCreateFunction('regexp',
-                function ($pattern, $data, $delimiter = '~', $modifiers = 'isuS') {
-                    if (isset($pattern, $data) === true) {
-                        return preg_match(sprintf('%1$s%2$s%1$s%3$s', $delimiter, $pattern, $modifiers), $data) > 0;
-                    }
-
-                    return null;
-                }
-            );
-            static::$sqliteFunctionIsCreated = true;
+        if (static::$sqliteFunctionIsCreated || DB::connection()->getDriverName() !== 'sqlite') {
+            return;
         }
+
+        $pdo = DB::connection()->getPdo();
+        $callback = static function ($pattern, $data, $delimiter = '~', $modifiers = 'isuS') {
+            if (isset($pattern, $data) === true) {
+                return preg_match(sprintf('%1$s%2$s%1$s%3$s', $delimiter, $pattern, $modifiers), $data) > 0;
+            }
+
+            return null;
+        };
+
+        // PHP 8.5 removed PDO::sqliteCreateFunction() in favour of Pdo\Sqlite::createFunction().
+        // Pdo\Sqlite exists since PHP 8.4; older PHP still uses the PDO method.
+        if ($pdo instanceof \Pdo\Sqlite) {
+            $pdo->createFunction('regexp', $callback);
+        } elseif (method_exists($pdo, 'createFunction')) {
+            $pdo->createFunction('regexp', $callback);
+        } else {
+            $pdo->sqliteCreateFunction('regexp', $callback);
+        }
+
+        static::$sqliteFunctionIsCreated = true;
     }
 
     public static function SanitizeName(?string $value): string

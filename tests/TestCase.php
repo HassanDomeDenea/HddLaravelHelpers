@@ -5,6 +5,7 @@ namespace HassanDomeDenea\HddLaravelHelpers\Tests;
 use HassanDomeDenea\HddLaravelHelpers\HddLaravelHelpersServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Orchestra\Testbench\TestCase as Orchestra;
+use Spatie\LaravelData\LaravelDataServiceProvider;
 
 class TestCase extends Orchestra
 {
@@ -20,6 +21,8 @@ class TestCase extends Orchestra
     protected function getPackageProviders($app): array
     {
         return [
+            // Data tables answer with a `Data` object, which needs the package's own config.
+            LaravelDataServiceProvider::class,
             HddLaravelHelpersServiceProvider::class,
         ];
     }

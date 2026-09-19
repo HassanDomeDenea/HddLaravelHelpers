@@ -367,15 +367,20 @@ class DataTable
 
 
         if (!$skipCheckingRelations) {
-            $this->checkNestedColumnName($columnName);
-            $this->modifyColumnName($columnName, 'filterField');
-            if ($field?->filterSource->in([FieldType::relationCount])) {
-                $columnName = new Coalesce([$columnName, new Number(0)]);
-                //$isRelationCountField = true;
-                // [$columnName] = $targetQuery->relationAggregateQuery(Str::beforeLast($columnName, '_count'), '*', 'count', false);
-            } elseif ($field?->filterSource->in([FieldType::relationMany])) {
+            if ($field?->filterSource->in([FieldType::relationMany])) {
+                // A `relation_many` filter is a `whereHas`, not a join, so it never goes through
+                // the naming the joined columns use: the relation is addressed by its method and
+                // the column by the table that relation ends up querying.
                 $relationManyField = Str::beforeLast($columnName, '.');
                 $columnName = Str::afterLast($columnName, '.');
+            } else {
+                $this->checkNestedColumnName($columnName);
+                $this->modifyColumnName($columnName, 'filterField');
+                if ($field?->filterSource->in([FieldType::relationCount])) {
+                    $columnName = new Coalesce([$columnName, new Number(0)]);
+                    //$isRelationCountField = true;
+                    // [$columnName] = $targetQuery->relationAggregateQuery(Str::beforeLast($columnName, '_count'), '*', 'count', false);
+                }
             }
         }
 
@@ -384,13 +389,20 @@ class DataTable
 
         if ($relationManyField) {
 
-            $filterCallback = function (Builder $q) use ($relationManyField, $matchMode, $value, $columnName) {
-                $this->addFilterToField($relationManyField . '.' . $columnName, $value, $matchMode, $q, skipCheckingRelations: true);
+            // The filter field spells the relation the way the table does, in snake case
+            // (`building_units.unit_number`), while the relation itself is a camel cased
+            // method (`buildingUnits()`) and the column belongs to the related table.
+            $relationName = Collection::make(explode('.', $relationManyField))
+                ->map(fn(string $relationSegment) => Str::camel($relationSegment))
+                ->implode('.');
+
+            $filterCallback = function (Builder $q) use ($matchMode, $value, $columnName) {
+                $this->addFilterToField($q->qualifyColumn($columnName), $value, $matchMode, $q, skipCheckingRelations: true);
             };
             if ($boolean === 'and') {
-                $targetQuery->whereHas($relationManyField, $filterCallback);
+                $targetQuery->whereHas($relationName, $filterCallback);
             } else {
-                $targetQuery->orWhereHas($relationManyField, $filterCallback);
+                $targetQuery->orWhereHas($relationName, $filterCallback);
             }
             return;
         }

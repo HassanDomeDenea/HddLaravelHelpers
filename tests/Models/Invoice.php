@@ -22,4 +22,13 @@ class Invoice extends Model
     {
         return $this->hasMany(InvoiceItem::class);
     }
+
+    /**
+     * The same items under the name a data table would send for the `invoice_items` table,
+     * so that a relation addressed in snake case still reaches a camel cased method.
+     */
+    public function invoiceItems(): HasMany
+    {
+        return $this->hasMany(InvoiceItem::class);
+    }
 }

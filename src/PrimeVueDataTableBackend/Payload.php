@@ -4,6 +4,7 @@ namespace HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend;
 
 use HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend\Enums\FieldType;
 use HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend\Enums\FilterMatchMode;
+use HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend\Enums\SortAs;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Validator;
@@ -140,6 +141,7 @@ class Payload
             'fields.*.filterField' => ['string'],
             'fields.*.sortField' => ['string'],
             'fields.*.morphableTo' => ['nullable', 'string'],
+            'fields.*.sortAs' => ['nullable', Rule::enum(SortAs::class)],
             'sorts' => '',
             'sorts.*.field' => ['required', 'string'],
 //            'sorts.*.order' => 'integer|in:1,-1',

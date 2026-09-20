@@ -9,6 +9,7 @@ use HassanDomeDenea\HddLaravelHelpers\BaseModel;
 use HassanDomeDenea\HddLaravelHelpers\Helpers\StringHelpers;
 use HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend\Enums\FieldType;
 use HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend\Enums\FilterMatchMode;
+use HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend\Enums\SortAs;
 use HassanDomeDenea\HddLaravelHelpers\PrimeVueDataTableBackend\Payload;
 use HassanDomeDenea\HddLaravelHelpers\QueryComparisons\DateBetween;
 use HassanDomeDenea\HddLaravelHelpers\QueryComparisons\DateCompare;
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\MySqlConnection;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Arr;
@@ -830,8 +832,45 @@ class DataTable
             } else {
                 $this->modifyColumnName($columnName, 'sortField');
             }
-            $this->query->orderBy($columnName, $sort->direction);
+            $direction = strtolower($sort->direction) === 'desc' ? 'desc' : 'asc';
+            $naturalOrderings = $field?->sortAs?->is(SortAs::natural)
+                ? $this->naturalSortOrderings($columnName, $direction)
+                : null;
+            if ($naturalOrderings) {
+                foreach ($naturalOrderings as $ordering) {
+                    $this->query->orderByRaw($ordering);
+                }
+            } else {
+                $this->query->orderBy($columnName, $direction);
+            }
         });
+    }
+
+    /**
+     * Order a column that holds numbers as text the way a reader expects: 2 before 10, and
+     * INV-2 before INV-10.
+     *
+     * MariaDB (10.7+) does that with NATURAL_SORT_KEY(). Everywhere else falls back to a
+     * numeric cast, which is right for plain numeric text and leaves whatever it cannot read
+     * as a number in its plain text order. A driver with neither gets null, so the caller
+     * sorts the column the way it always did.
+     *
+     * @return array<int, string>|null
+     */
+    private function naturalSortOrderings(string $columnName, string $direction): ?array
+    {
+        $connection = $this->query->getModel()->getConnection();
+        $column = $connection->getQueryGrammar()->wrap($columnName);
+
+        if ($connection->getDriverName() === 'mariadb'
+            || ($connection instanceof MySqlConnection && $connection->isMaria())) {
+            return ["NATURAL_SORT_KEY($column) $direction"];
+        }
+
+        return match ($connection->getDriverName()) {
+            'mysql', 'sqlite' => ["CAST($column AS UNSIGNED) $direction", "$column $direction"],
+            default => null,
+        };
     }
 
     private function checkColumnsForRelations(): void

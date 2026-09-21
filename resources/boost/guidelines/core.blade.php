@@ -6,7 +6,7 @@ A comprehensive Laravel package providing CRUD controllers, PrimeVue DataTable b
 
 - **BaseModel**: Eloquent model base class with SoftDeletes, Auditable, deletion checks, batch operations, and validation helpers.
 - **BaseModelWithUlid**: Same as BaseModel but with ULID primary keys.
-- **BaseCrudController**: Full CRUD controller with auto-discovered models, data classes, actions, and policies.
+- **BaseCrudController**: Full CRUD controller with auto-discovered models, data classes, actions, policies, and declarative eager loading (`$with` / `getEagerLoads()`).
 - **Auto-Discovery**: Controller name resolves to model, data, action, and policy classes by naming convention (see `hdd-domains` skill).
 
 ### Skills

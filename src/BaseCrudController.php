@@ -47,6 +47,14 @@ class BaseCrudController extends Controller
     protected array $allowedIncludes = [];
     protected array $allowedFilters = [];
 
+    /**
+     * Relations always eager-loaded on Data-returning endpoints.
+     * Nested strings and constrained closures are forwarded to Eloquent as-is.
+     *
+     * @var array<int|string, mixed>
+     */
+    protected array $with = [];
+
     public ?string $dataClass = null;
 
     public ?string $storeFormRequestClass = null;
@@ -80,6 +88,17 @@ class BaseCrudController extends Controller
     }
 
     /**
+     * Relations always eager-loaded on index, datatable, list, search, show, store, and update.
+     * Override for conditional logic (for example permission-gated relations).
+     *
+     * @return array<int|string, mixed>
+     */
+    protected function getEagerLoads(): array
+    {
+        return $this->with;
+    }
+
+    /**
      * @return QueryBuilder<TModelClass>
      */
     protected function getQueryBuilder(): QueryBuilder
@@ -91,6 +110,9 @@ class BaseCrudController extends Controller
                 }
                 if (filled($this->allowedFilters)) {
                     $queryBuilder->allowedFilters(...$this->allowedFilters);
+                }
+                if (filled($eagerLoads = $this->getEagerLoads())) {
+                    $queryBuilder->with($eagerLoads);
                 }
             });
     }
@@ -287,6 +309,9 @@ class BaseCrudController extends Controller
         } else {
             $modelInstance = $this->getModalClass()::create($attributes);
         }
+        if (filled($eagerLoads = $this->getEagerLoads())) {
+            $modelInstance->loadMissing($eagerLoads);
+        }
         $dataClass = $this->getDataClass();
 
         return ApiResponse::successResponse($dataClass ? $dataClass::from($modelInstance) : $modelInstance, 201);
@@ -347,6 +372,9 @@ class BaseCrudController extends Controller
             $modelInstance = app()->make($actionClassName)->handle($modelInstance, $attributes);
         } else {
             $modelInstance->update($attributes);
+        }
+        if (filled($eagerLoads = $this->getEagerLoads())) {
+            $modelInstance->loadMissing($eagerLoads);
         }
         $dataClass = $this->getDataClass();
 

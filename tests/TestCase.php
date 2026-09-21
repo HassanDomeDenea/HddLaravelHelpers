@@ -6,6 +6,7 @@ use HassanDomeDenea\HddLaravelHelpers\HddLaravelHelpersServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Spatie\LaravelData\LaravelDataServiceProvider;
+use Spatie\QueryBuilder\QueryBuilderServiceProvider;
 
 class TestCase extends Orchestra
 {
@@ -23,6 +24,7 @@ class TestCase extends Orchestra
         return [
             // Data tables answer with a `Data` object, which needs the package's own config.
             LaravelDataServiceProvider::class,
+            QueryBuilderServiceProvider::class,
             HddLaravelHelpersServiceProvider::class,
         ];
     }

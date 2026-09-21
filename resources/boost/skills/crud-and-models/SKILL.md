@@ -68,7 +68,8 @@ class ProductController extends BaseCrudController
     public ?string $storeFormRequestClass = null;  // Alternative to Data class
     public ?string $updateFormRequestClass = null;  // Alternative to Data class
 
-    protected array $allowedIncludes = ['category', 'tags'];
+    protected array $with = ['category'];            // always loaded
+    protected array $allowedIncludes = ['tags'];     // loadable on request via `?include=`
     protected array $allowedFilters = ['name', 'category_id'];
 }
 ```
@@ -89,6 +90,31 @@ class ProductController extends BaseCrudController
 | DELETE | `/products` | `destroyMany()` | Batch delete |
 | PUT | `/products/reorder` | `reorder()` | Reorder items |
 | GET | `/products/{id}/audits` | `audits()` | Audit trail |
+
+### Eager Loading
+
+Spatie Laravel Data maps relation properties from the model's already loaded relations. A Data class property for an unloaded relation serialises as `null`, not as an error — the endpoint still returns `200 OK`.
+
+Declare relations the Data class always exposes:
+
+```php
+protected array $with = ['category'];
+
+protected function getEagerLoads(): array
+{
+    return $this->with;
+    // Or branch on permissions:
+    // return auth()->user()->can('viewTags') ? ['category', 'tags'] : ['category'];
+}
+```
+
+`$with` / `getEagerLoads()` are applied on `index`, `datatable`, `list`, `search`, `show`, `store`, and `update`. They compose with `$allowedIncludes`: a request with `?include=tags` on a controller that declares `$with = ['category']` loads both.
+
+They are not applied on `destroy`, `destroyMany`, `storeMany`, or `reorder`, which do not serialise a Data class.
+
+Nested strings (`'supplier.category'`) and constrained eager loads (`['items' => fn ($q) => $q->where(...)]`) are forwarded to Eloquent as-is.
+
+`store` and `update` use `loadMissing()`, so an action class that already loaded the relation is not queried again.
 
 ### Overriding Endpoints
 
@@ -115,6 +141,8 @@ class ProductController extends BaseCrudController
     }
 }
 ```
+
+Overrides that call `getQueryBuilder()` inherit the declared relations automatically. Overrides that build a query from `Model::query()` must apply `$this->getEagerLoads()` themselves.
 
 ## Action Classes
 
@@ -298,6 +326,7 @@ class ProductData extends Data
         public string $name,
         public float $price,
         public int $category_id,
+        public ?CategoryData $category = null,
     ) {}
 }
 
@@ -323,7 +352,8 @@ class CreateProductAction
 // app/Http/Controllers/ProductController.php
 class ProductController extends BaseCrudController
 {
-    protected array $allowedIncludes = ['category', 'tags'];
+    protected array $with = ['category'];            // always loaded
+    protected array $allowedIncludes = ['tags'];     // loadable on request via `?include=`
 }
 
 // routes/api.php

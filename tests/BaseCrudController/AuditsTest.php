@@ -33,11 +33,13 @@ function auditedEmployee(): Employee
         'event' => 'created',
         'old_values' => [],
         'new_values' => ['name' => 'Ali', 'salary' => 1000],
+        'created_at' => now()->subDay(),
     ]);
     $employee->audits()->create([
         'event' => 'updated',
         'old_values' => ['salary' => 1000],
         'new_values' => ['salary' => 1500],
+        'created_at' => now(),
     ]);
 
     return $employee;
@@ -60,6 +62,20 @@ it('returns the history of a field to a user who may view the record', function 
         ->assertJsonPath('success', true)
         ->assertJsonCount(2, 'data.data');
 });
+
+it('lists the value each change set next to the value it replaced', function (bool $withAllValues) {
+    $employee = auditedEmployee();
+
+    $this->actingAs(auditsUser(['view_employees']))
+        ->getJson("/employees/{$employee->id}/audits?field=salary&with_all_values=".(int) $withAllValues)
+        ->assertOk()
+        ->assertJsonPath('data.data.0.event', 'updated')
+        ->assertJsonPath('data.data.0.oldValue', 1000)
+        ->assertJsonPath('data.data.0.newValue', 1500)
+        ->assertJsonPath('data.data.1.event', 'created')
+        ->assertJsonPath('data.data.1.oldValue', null)
+        ->assertJsonPath('data.data.1.newValue', 1000);
+})->with(['field only' => false, 'with all values' => true]);
 
 it('forbids the history to a user who may not view the record', function () {
     $employee = auditedEmployee();

@@ -17,6 +17,7 @@ use HassanDomeDenea\HddLaravelHelpers\Requests\StoreManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Requests\UpdateManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Services\InfiniteScrollSearcherService;
 use Illuminate\Contracts\Container\BindingResolutionException;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Bus\DispatchesJobs;
 use Illuminate\Foundation\Http\FormRequest;
@@ -494,6 +495,7 @@ class BaseCrudController extends Controller
 
         /** @var BaseModel $modelInstance */
         $modelInstance = $this->getModalClass()::findOrFail($id);
+        $this->authorizeAudits($modelInstance, $request->input('field'));
 
         return ApiResponse::successResponse(
             AuditableUtilities::FormatAuditQuery(
@@ -502,5 +504,24 @@ class BaseCrudController extends Controller
                 $request->boolean('with_all_values'),
             )
         );
+    }
+
+    /**
+     * A field's history holds every value it ever had, so reading it needs at least `view` on the record.
+     * An app can demand more through a `viewAudits` ability, either as a method on the model's policy or
+     * app wide with `Gate::define('viewAudits', ...)`; it receives the record and the requested field.
+     * The ability is only checked when defined, since an undefined one would deny everybody.
+     */
+    protected function authorizeAudits(Model $modelInstance, string $field): void
+    {
+        if (!$this->getPolicyClass()) {
+            return;
+        }
+        Gate::authorize('view', $modelInstance);
+
+        $policy = Gate::getPolicyFor($modelInstance);
+        if (Gate::has('viewAudits') || ($policy && method_exists($policy, 'viewAudits'))) {
+            Gate::authorize('viewAudits', [$modelInstance, $field]);
+        }
     }
 }

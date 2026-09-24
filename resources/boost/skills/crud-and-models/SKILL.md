@@ -273,13 +273,16 @@ The controller checks these policy methods:
 |--------|---------|
 | `viewAny` | `index()`, `datatable()`, `search()` |
 | `viewList` | `list()` (falls back to `viewAny`) |
-| `view` | `show()` |
+| `view` | `show()`, `audits()` |
+| `viewAudits` | `audits()`, in addition to `view`, only when defined (receives the record and the requested `field`) |
 | `create` | `store()`, `storeMany()` |
 | `update` | `update()` |
 | `updateMany` | `updateMany()` |
 | `delete` | `destroy()` |
 | `deleteMany` | `destroyMany()` |
 | `reorder` | `reorder()` |
+
+`viewAudits` can be a method on the model's policy or one app wide ability, e.g. `Gate::define('viewAudits', fn (User $user, Model $model, string $field) => $user->can('view_changes_history'))`. A policy method wins over the app wide ability for its model. Override `authorizeAudits()` on a controller to replace the check entirely.
 
 ## ApiResponse
 

@@ -10,6 +10,7 @@ All notable changes to `HddLaravelHelpers` will be documented in this file.
 
 ### Fixed
 
+- `BaseCrudController::updateMany()` and `destroyMany()` authorized `updateMany` / `deleteMany` against an array of ids, which resolves no policy, so both answered 403 to everyone `Gate::before` did not let through. They now require `update` / `delete` on every record of the batch. A policy that defines `updateMany` / `deleteMany` itself (or an app wide `Gate::define()` of that name) decides the whole batch instead and receives the records as a collection. Override `authorizeMany()` on a controller to replace the check.
 - `AuditableUtilities::FormatAuditQuery()` read `newValue` from `old_values`, so a field's history listed the value each change replaced instead of the value it set, and a `created` entry showed nothing. It now reads `new_values`.
 
 ### Added

@@ -17,6 +17,7 @@ use HassanDomeDenea\HddLaravelHelpers\Requests\StoreManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Requests\UpdateManyRequest;
 use HassanDomeDenea\HddLaravelHelpers\Services\InfiniteScrollSearcherService;
 use Illuminate\Contracts\Container\BindingResolutionException;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Bus\DispatchesJobs;
@@ -386,20 +387,19 @@ class BaseCrudController extends Controller
 
     public function updateMany(UpdateManyRequest $request): JsonResponse
     {
-        if ($this->getPolicyClass()) {
-            Gate::authorize('updateMany', $request->array('data.*.ids'));
-        }
+        $dataList = $request->array('data');
+        $primaryKeyName = $this->getModalClass()::getTablePrimaryKey() ?: 'id';
+        $modelsList = $this->getModalClass()::query()->findMany(Arr::pluck($dataList, $primaryKeyName));
+        $this->authorizeMany('update', 'updateMany', $modelsList);
+
         $ids = [];
         try {
-            DB::transaction(function () use ($request, &$ids) {
-                $dataList = $request->array('data');
+            DB::transaction(function () use ($dataList, $primaryKeyName, $modelsList, &$ids) {
 
                 $actionClassName = $this->getUpdateActionClass();
                 $actionClassAttributeType = PathHelpers::getActionClassAttributeType($actionClassName, 1);
 
                 $modelBindingName = Str::snake(class_basename($this->getModalClass()));
-                $primaryKeyName = $this->getModalClass()::getTablePrimaryKey() ?: 'id';
-                $modelsList = $this->getModalClass()::query()->findMany(Arr::pluck($dataList, $primaryKeyName));
                 foreach ($dataList as $itemId => $itemData) {
                     $id = $itemData[$primaryKeyName] ?? $itemId;
                     $modelInstance = $modelsList->where($primaryKeyName, $id)->firstOrFail();
@@ -442,7 +442,7 @@ class BaseCrudController extends Controller
     public function destroyMany(DestroyManyRequest $request): JsonResponse
     {
         if ($this->getPolicyClass()) {
-            Gate::authorize('deleteMany', $request->array('ids'));
+            $this->authorizeMany('delete', 'deleteMany', $this->getModalClass()::query()->findMany($request->array('ids')));
         }
         $actionClassName = $this->getDeleteActionClass();
         if ($actionClassName) {
@@ -506,6 +506,32 @@ class BaseCrudController extends Controller
                 $request->boolean('with_all_values'),
             )
         );
+    }
+
+    /**
+     * A batch needs what the single action needs, on every record in it: `update` for `updateMany()`,
+     * `delete` for `destroyMany()`. A policy that defines the batch ability itself (`updateMany`,
+     * `deleteMany`) takes over and decides for the whole batch at once; it receives the records as a
+     * collection. So does an app wide `Gate::define()` of that name.
+     *
+     * @param  Collection<int, Model>  $models
+     */
+    protected function authorizeMany(string $ability, string $manyAbility, Collection $models): void
+    {
+        if (!$this->getPolicyClass()) {
+            return;
+        }
+
+        $policy = Gate::getPolicyFor($this->getModalClass());
+        if (Gate::has($manyAbility) || ($policy && method_exists($policy, $manyAbility))) {
+            Gate::authorize($manyAbility, [$this->getModalClass(), $models]);
+
+            return;
+        }
+
+        foreach ($models as $model) {
+            Gate::authorize($ability, $model);
+        }
     }
 
     /**

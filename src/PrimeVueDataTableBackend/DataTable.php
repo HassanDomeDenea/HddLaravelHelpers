@@ -82,6 +82,13 @@ class DataTable
     protected $_itemsModifier = null;
 
     /**
+     * How many rows are turned into arrays before their models are released.
+     */
+    private const ITEMS_TRANSFORM_CHUNK_SIZE = 200;
+
+    protected bool $_itemsAsArrays = false;
+
+    /**
      * @var class-string<Data> | null
      */
     protected mixed $_dataClass = null;
@@ -924,6 +931,55 @@ class DataTable
     }
 
     /**
+     * Hand the rows back as plain arrays instead of data objects.
+     *
+     * A listing normally holds three copies of every row at once: the models, the data
+     * objects built from them, and the arrays those become in the response. Asking for
+     * every row at once (`perPage: -1`, an export, a print) multiplies that by the whole
+     * table. In this mode the rows are converted a chunk at a time and each chunk's models
+     * and data objects are let go before the next, so only the arrays are left standing.
+     * The JSON that reaches the client is the same.
+     *
+     * Only for callers that return the response as it is: `$response->data` then holds
+     * arrays, so anything that edits the data objects after `proceed()` must leave this
+     * off. It has no effect without a data class, or alongside `modifyItemsCollection()`,
+     * whose callback is promised the data objects.
+     *
+     * @return $this
+     */
+    public function itemsAsArrays(bool $itemsAsArrays = true): self
+    {
+        $this->_itemsAsArrays = $itemsAsArrays;
+
+        return $this;
+    }
+
+    /**
+     * @param array<int, Model> $pending Emptied as it is converted, which is why it is taken by reference.
+     * @param list<string>|null $onlyFields
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function transformItemsToArrays(array &$pending, ?array $onlyFields): Collection
+    {
+        $rows = [];
+        $chunk = [];
+        foreach (array_keys($pending) as $key) {
+            $chunk[] = $pending[$key];
+            // Dropped from the list as it is taken, so a converted chunk leaves nothing behind.
+            unset($pending[$key]);
+
+            if (count($chunk) === self::ITEMS_TRANSFORM_CHUNK_SIZE || $pending === []) {
+                foreach ($this->_dataClass::collect($chunk) as $item) {
+                    $rows[] = ($onlyFields === null ? $item : $item->only(...$onlyFields))->toArray();
+                }
+                $chunk = [];
+            }
+        }
+
+        return new Collection($rows);
+    }
+
+    /**
      * @throws ValidationException
      */
     public function proceed(): ResponseData
@@ -976,15 +1032,24 @@ class DataTable
 
         $items = $this->query->get();
         if ($this->_dataClass) {
-            $items = $this->_dataClass::collect($items);
+            $onlyFields = null;
             if($payload->options->onlyRequestedColumns){
-                $fields = $payload->fields->map(fn(Field $field) => Str::camel($field->name))->toArray();
+                $onlyFields = $payload->fields->map(fn(Field $field) => Str::camel($field->name))->toArray();
                 if(filled($payload->options->primaryKey)){
-                    $fields[] = $payload->options->primaryKey;
+                    $onlyFields[] = $payload->options->primaryKey;
                 }
-                $items->map(fn($item) => $item->only(...$fields));
-                // $items->only('name');
-//                $items->only($payload->fields->map(fn(Field $field) => $field->name));
+            }
+
+            if ($this->_itemsAsArrays && !$this->_itemsModifier) {
+                $models = $items->all();
+                // Nothing else may keep hold of the models, or converting them frees none.
+                $items = null;
+                $items = $this->transformItemsToArrays($models, $onlyFields);
+            } else {
+                $items = $this->_dataClass::collect($items);
+                if ($onlyFields !== null) {
+                    $items->map(fn($item) => $item->only(...$onlyFields));
+                }
             }
         }
 

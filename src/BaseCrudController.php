@@ -266,6 +266,7 @@ class BaseCrudController extends Controller
         $dt->setModel($this->getModalClass());
         $dt->setModel($this->getQueryBuilder());
         $dt->setDataClass($this->getDataClass());
+        $dt->itemsAsArrays();
 
         return ApiResponse::successResponse($dt->proceed());
     }
@@ -278,6 +279,7 @@ class BaseCrudController extends Controller
         $dt->setModel($this->getModalClass());
         $dt->setModel($this->getQueryBuilder());
         $dt->setDataClass($this->getDataClass());
+        $dt->itemsAsArrays();
 
         return ApiResponse::successResponse($dt->proceed());
     }

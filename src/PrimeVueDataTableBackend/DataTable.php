@@ -270,7 +270,12 @@ class DataTable
         }
 
         if (!empty($this->relations)) {
+            // `with()` merges by relation name, so loading a relation the query already loads,
+            // or one nested under it, would swap the caller's constraints (counts, nested loads,
+            // selected columns) for a bare load. Whatever the caller set is put back on top.
+            $callerEagerLoads = $query->getEagerLoads();
             $query->with(array_unique(array_map(fn($i)=>Str::camel($i),$this->relations)));
+            $query->setEagerLoads(array_merge($query->getEagerLoads(), $callerEagerLoads));
         }
 
         if (!empty($this->relationsCounts)) {

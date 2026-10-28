@@ -86,6 +86,11 @@ class DataTable
      */
     private const ITEMS_TRANSFORM_CHUNK_SIZE = 200;
 
+    /**
+     * The scope that orders the fetched rows by their primary key last.
+     */
+    private const PRIMARY_KEY_ORDER_SCOPE = self::class . '@orderByPrimaryKeyLast';
+
     protected bool $_itemsAsArrays = false;
 
     /**
@@ -859,6 +864,72 @@ class DataTable
     }
 
     /**
+     * Settle the order of rows the sorts leave tied by their primary key, after every other ordering.
+     *
+     * Rows that share a sort value (every invoice of one day under a date sort) otherwise come back
+     * in whatever order the database picks, and MySQL picks differently for different offsets: paging
+     * through the table shows some rows on two pages and others on none. Printing or exporting every
+     * page gathers the rows exactly that way, a page at a time.
+     *
+     * It is a scope rather than an orderBy() because Eloquent applies global scopes when the query
+     * runs, and a model's own ordering scope has to keep coming before it.
+     */
+    private function orderByPrimaryKeyLast(): void
+    {
+        $keyName = $this->query->getModel()->getKeyName();
+        if (blank($keyName)) {
+            return;
+        }
+        $qualifiedKeyName = "$this->mainTableName.$keyName";
+        $direction = $this->payload->sorts->last()?->direction === 'desc' ? 'desc' : 'asc';
+
+        $this->query->withGlobalScope(self::PRIMARY_KEY_ORDER_SCOPE, function (Builder $query) use ($keyName, $qualifiedKeyName, $direction): void {
+            $baseQuery = $query->getQuery();
+            // A grouped query has no single row per key to order by.
+            if (filled($baseQuery->groups) || filled($baseQuery->unions)) {
+                return;
+            }
+            $isOrderedByKey = collect($baseQuery->orders ?? [])
+                ->contains(fn(array $order): bool => in_array($order['column'] ?? null, [$keyName, $qualifiedKeyName], true));
+            if (!$isOrderedByKey) {
+                $query->orderBy($qualifiedKeyName, $direction);
+            }
+        });
+    }
+
+    /**
+     * Refuse to build more rows than one request can hold.
+     *
+     * Each row is held several times over while a response is built (its model, its data object,
+     * its array, its JSON), so `perPage: -1` on a table of a few thousand rows ran PHP out of memory,
+     * and the fatal error took the worker serving it down too. The count is already known by now,
+     * so the caller gets a message to show instead. Whoever needs every row asks for them a page at
+     * a time.
+     *
+     * @throws ValidationException
+     */
+    private function ensureRowsFitOneRequest(int $total): void
+    {
+        $maxRows = (int)config('hdd-laravel-helpers.datatable.max_rows_per_request');
+        if ($maxRows <= 0) {
+            return;
+        }
+
+        $rowsToBuild = $this->payload->perPage === -1
+            ? $total
+            : min($this->payload->perPage, max($total - $this->payload->first, 0));
+
+        if ($rowsToBuild > $maxRows) {
+            throw ValidationException::withMessages([
+                'perPage' => __('This asks for :count rows at once, more than the :max that can be loaded together. Narrow the list down with the filters, or go through it page by page.', [
+                    'count' => $rowsToBuild,
+                    'max' => $maxRows,
+                ]),
+            ]);
+        }
+    }
+
+    /**
      * Order a column that holds numbers as text the way a reader expects: 2 before 10, and
      * INV-2 before INV-10.
      *
@@ -1022,6 +1093,7 @@ class DataTable
         $this->processAddedCustomColumns();
 
         $total = $hasFilters ? $this->query->count($countColumn) : $totalWithoutFilters;
+        $this->ensureRowsFitOneRequest($total);
 
         // $columns = $this->setColumns();
 
@@ -1035,7 +1107,11 @@ class DataTable
             $this->query->with($this->payload->includes);
         }
 
+        $this->orderByPrimaryKeyLast();
         $items = $this->query->get();
+        // Only this read needs it: callers reuse getQuery() afterwards for totals, which reorder() it
+        // and could not aggregate with an order on the key put back.
+        $this->query->withoutGlobalScope(self::PRIMARY_KEY_ORDER_SCOPE);
         if ($this->_dataClass) {
             $onlyFields = null;
             if($payload->options->onlyRequestedColumns){

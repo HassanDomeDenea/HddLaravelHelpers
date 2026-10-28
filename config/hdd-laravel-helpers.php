@@ -16,6 +16,14 @@ return [
         'Response', 'JsonResponse'
     ],
     'hdd-laravel-helpers.with-where-aggregate-use-joins' => true,
+    'datatable' => [
+        /**
+         * The most rows one DataTable request may build, counting `perPage: -1`. A request for more
+         * is refused with a validation message instead of running the PHP process out of memory.
+         * Null or 0 lifts the limit.
+         */
+        'max_rows_per_request' => env('HDD_DATATABLE_MAX_ROWS_PER_REQUEST', 2000),
+    ],
     'whatsapp-userid'=>env('HDD_WHATSAPP_USER_ID'),
     'whatsapp-username'=>env('HDD_WHATSAPP_USERNAME'),
     'whatsapp-password'=>env('HDD_WHATSAPP_PASSWORD'),
